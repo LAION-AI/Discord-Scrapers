@@ -29,4 +29,4 @@ jobs:
       env: # Set the secret as an input
         DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
       run: |
-        python scrape_latest.py
+        python src/scrape_latest.py
