@@ -1,8 +1,8 @@
-name: Run scrape_latest.py every 2 minutes
+name: Run scrape_latest.py every 15 minutes
 
 on:
   schedule:
-    # Run every 2 minutes
+    # Run every 15 minutes
     - cron: '*/15 * * * *'
 
 jobs:
