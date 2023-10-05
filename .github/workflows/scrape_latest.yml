@@ -3,7 +3,7 @@ name: Run scrape_latest.py every 2 minutes
 on:
   schedule:
     # Run every 2 minutes
-    - cron: '*/2 * * * *'
+    - cron: '*/15 * * * *'
 
 jobs:
   build:
