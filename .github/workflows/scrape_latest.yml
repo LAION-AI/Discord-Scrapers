@@ -21,6 +21,8 @@ jobs:
     - name: Install dependencies
       run: |
         pip install requests
+        pwd
+        ls -la
 
     - name: Run scrape_latest.py
       env: # Set the secret as an input
