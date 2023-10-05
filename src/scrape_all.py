@@ -1,7 +1,9 @@
 import requests
 from typing import List, Dict, Tuple
 
-from . import utils
+from datasets import Dataset, load_dataset
+
+import utils
 
 def get_all_messages() -> List[Tuple[str, str]]:
     config = utils.load_config()
@@ -15,7 +17,7 @@ def get_all_messages() -> List[Tuple[str, str]]:
     all_messages = []
 
     # Initialize with a large limit to get as many messages as possible per request
-    limit = 1
+    limit = 100
     before_message_id = None
 
     while True:
@@ -26,7 +28,10 @@ def get_all_messages() -> List[Tuple[str, str]]:
         if before_message_id:
             url += f'&before={before_message_id}'
 
+        print(f"Fetching messages from {url}...")
+
         response = requests.get(url, headers=headers)
+
 
         if response.status_code == 200:
             messages = response.json()
@@ -53,12 +58,16 @@ def get_all_messages() -> List[Tuple[str, str]]:
         # <image attachment>
         if len(message["attachments"]) == 0 or not message["content"].startswith('"'):
             continue
-        prompt_image = utils.parse_message(message)
-        messages.append(prompt_image)
+        prompt_images = utils.parse_message(message)
+        messages.extend(prompt_images)
 
     return messages
 
 if __name__ == '__main__':
     messages = get_all_messages()
+    dataset = utils.prepare_dataset(messages)
     print(f"Fetched {len(messages)} messages.")
-    print(messages)
+    current_dataset = load_dataset("ZachNagengast/LAION-discord-dalle3")
+    print(dataset)
+    merged_dataset = utils.merge_datasets(current_dataset, dataset)
+    merged_dataset.push_to_hub("ZachNagengast/LAION-discord-dalle3")

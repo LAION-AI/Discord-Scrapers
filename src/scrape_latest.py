@@ -1,6 +1,8 @@
 import requests
 from typing import List, Dict, Tuple
 
+from datasets import Dataset, load_dataset
+
 import utils
 
 def get_latest_messages() -> List[Tuple[str, str]]:
@@ -32,5 +34,10 @@ def get_latest_messages() -> List[Tuple[str, str]]:
 
 if __name__ == '__main__':
     messages = get_latest_messages()
+    dataset = utils.prepare_dataset(messages)
+    current_dataset = load_dataset("ZachNagengast/LAION-discord-dalle3")
     print(f"Fetched {len(messages)} messages.")
     print(messages)
+    print(dataset)
+    merged_dataset = utils.merge_datasets(current_dataset, dataset)
+    merged_dataset.push_to_hub("ZachNagengast/LAION-discord-dalle3")
