@@ -21,6 +21,6 @@ def parse_message(message: Dict[str, Any]) -> List[Tuple[str, str]]:
     # "<prompt>"
     # <image attachment>
     prompt = message["content"].split('"')[1].strip()
-    image_url = message["attachments"][0]["url"]
+    image_urls = [attachment["url"] for attachment in message["attachments"]]
 
-    return (prompt, image_url)
+    return [(prompt, image_url) for image_url in image_urls]

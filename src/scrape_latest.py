@@ -21,13 +21,10 @@ def get_latest_messages() -> List[Tuple[str, str]]:
     if response.status_code == 200:
         messages = response.json()
         for message in messages:
-            # Assumes message has the following structure:
-            # "<prompt>"
-            # <image attachment>
             if len(message["attachments"]) == 0 or not message["content"].startswith('"'):
                 continue
-            prompt_image = utils.parse_message(message)
-            latest_messages.append(prompt_image)
+            prompt_images = utils.parse_message(message)
+            latest_messages.extend(prompt_images)
     else:
         print(f"Failed to fetch messages. Status code: {response.status_code}")
 
