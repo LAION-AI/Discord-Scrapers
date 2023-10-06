@@ -29,7 +29,7 @@ def get_latest_messages() -> List[Tuple[str, str]]:
             prompt_images = utils.parse_message(message)
             latest_messages.extend(prompt_images)
     else:
-        print(f"Failed to fetch messages. Status code: {response.status_code}")
+        raise Exception(f"Failed to fetch messages. Status code: {response.status_code}")
 
     return latest_messages
 

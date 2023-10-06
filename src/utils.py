@@ -17,7 +17,7 @@ def load_config() -> Dict[str, Any]:
         config = json.load(f)
 
     # Override 'hf_dataset_name' if it exists in environment variables
-    env_hf_dataset_name = os.getenv("HF_DATASET_NAME")
+    env_hf_dataset_name = os.environ("HF_DATASET_NAME")
     if env_hf_dataset_name is not None:
         config["hf_dataset_name"] = env_hf_dataset_name
 
@@ -36,7 +36,7 @@ def parse_message(message: Dict[str, Any]) -> List[Tuple[str, str]]:
     return [(prompt, image_url) for image_url in image_urls]
 
 
-def prepare_dataset(messages: List[Tuple[str, str]], config) -> Dataset:
+def prepare_dataset(messages: List[Tuple[str, str]], config, overwrite: bool = False) -> Dataset:
     dataset = Dataset.from_dict(
         {
             "caption": [prompt for prompt, _ in messages],
@@ -50,9 +50,13 @@ def prepare_dataset(messages: List[Tuple[str, str]], config) -> Dataset:
     except:
         current_dataset = None
 
-    merged_dataset = merge_datasets(current_dataset, dataset)
+    # optionally overwrite, instead of merge
+    if overwrite:
+        prepared_dataset = dataset
+    else:
+        prepared_dataset = merge_datasets(current_dataset, dataset)
 
-    return merged_dataset
+    return prepared_dataset
 
 
 def merge_datasets(old_dataset: Dataset, new_dataset: Dataset) -> Dataset:
