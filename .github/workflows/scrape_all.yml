@@ -26,6 +26,6 @@ jobs:
       env: # Set the secret as an input
         DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        HF_DATABASE_NAME: ${{ secrets.HF_DATABASE_NAME }}
+        HF_DATASET_NAME: ${{ secrets.HF_DATASET_NAME }}
       run: |
         python src/scrape_all.py
