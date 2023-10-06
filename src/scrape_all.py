@@ -65,5 +65,5 @@ def get_all_messages() -> List[Tuple[str, str]]:
 if __name__ == "__main__":
     messages = get_all_messages()
     print(f"Fetched {len(messages)} messages.")
-    dataset = utils.prepare_dataset(messages, config=config, merge=False)
+    dataset = utils.prepare_dataset(messages, config=config, overwrite=True)
     utils.upload_dataset(dataset, config=config)

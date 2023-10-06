@@ -38,7 +38,6 @@ def parse_message(message: Dict[str, Any]) -> List[Tuple[str, str]]:
     
     # Extract the text between the first and last quotes to get the complete prompt
     prompt = content[first_quote_index + 1:last_quote_index].strip()
-    print(prompt)
     
     # Extract URLs of all image attachments
     image_urls = [attachment["url"] for attachment in message["attachments"]]
