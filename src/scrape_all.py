@@ -5,9 +5,10 @@ import utils
 
 config = utils.load_config()
 
+
 def get_all_messages() -> List[Tuple[str, str]]:
-    base_url = config['base_url']
-    limit = config['limit']
+    base_url = config["base_url"]
+    limit = config["limit"]
     channel_id = config["channel_id"]
 
     headers = utils.get_user_headers()
@@ -20,30 +21,29 @@ def get_all_messages() -> List[Tuple[str, str]]:
 
     while True:
         # Construct the URL to fetch messages from the channel
-        url = f'{base_url}/channels/{channel_id}/messages?limit={limit}'
-        
+        url = f"{base_url}/channels/{channel_id}/messages?limit={limit}"
+
         # Add the 'before' parameter to fetch messages before a specific message ID
         if before_message_id:
-            url += f'&before={before_message_id}'
+            url += f"&before={before_message_id}"
 
         print(f"Fetching messages from {url}...")
 
         response = requests.get(url, headers=headers)
 
-
         if response.status_code == 200:
             messages = response.json()
-            
+
             # If there are no more messages, break out of the loop
             if not messages:
                 break
-            
+
             # Add the fetched messages to the list
             all_messages.extend(messages)
 
             # Use the ID of the last message in the response as the 'before' parameter
             # for the next request to fetch the next page of messages
-            before_message_id = messages[-1]['id']
+            before_message_id = messages[-1]["id"]
             limit = min(limit, 1000)  # Reduce the limit to 1000 for subsequent requests
         else:
             print(f"Failed to fetch messages. Status code: {response.status_code}")
@@ -61,7 +61,8 @@ def get_all_messages() -> List[Tuple[str, str]]:
 
     return messages
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     messages = get_all_messages()
     print(f"Fetched {len(messages)} messages.")
     dataset = utils.prepare_dataset(messages, config=config)
