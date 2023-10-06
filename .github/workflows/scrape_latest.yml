@@ -1,0 +1,33 @@
+name: Run scrape_latest.py every 15 minutes
+
+on:
+  schedule:
+    # Run every 15 minutes
+    - cron: '*/15 * * * *'
+  workflow_dispatch:  # manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pwd
+        ls -la
+
+    - name: Run scrape_latest.py
+      env: # Set the secret as an input
+        DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      run: |
+        python src/scrape_latest.py
