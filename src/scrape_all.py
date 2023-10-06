@@ -1,4 +1,5 @@
 import requests
+import time
 from typing import List, Dict, Tuple
 
 import utils
@@ -36,6 +37,7 @@ def get_all_messages() -> List[Tuple[str, str]]:
 
             # If there are no more messages, break out of the loop
             if not messages:
+                print("No more messages to fetch.")
                 break
 
             # Add the fetched messages to the list
@@ -45,6 +47,9 @@ def get_all_messages() -> List[Tuple[str, str]]:
             # for the next request to fetch the next page of messages
             before_message_id = messages[-1]["id"]
             limit = min(limit, 1000)  # Reduce the limit to 1000 for subsequent requests
+        elif response.status_code == 429:
+            print("Rate limited. Sleeping for 5 seconds...")
+            time.sleep(5)
         else:
             print(f"Failed to fetch messages. Status code: {response.status_code}")
             break

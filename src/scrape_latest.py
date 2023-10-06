@@ -1,4 +1,5 @@
 import requests
+import time
 from typing import List, Dict, Tuple
 
 import utils
@@ -28,6 +29,9 @@ def get_latest_messages() -> List[Tuple[str, str]]:
                 continue
             prompt_images = utils.parse_message(message)
             latest_messages.extend(prompt_images)
+    elif response.status_code == 429:
+        print("Rate limited. Sleeping for 5 seconds...")
+        time.sleep(5)
     else:
         raise Exception(f"Failed to fetch messages. Status code: {response.status_code}")
 
