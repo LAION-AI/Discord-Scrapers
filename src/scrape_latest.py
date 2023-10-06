@@ -33,7 +33,7 @@ def get_latest_messages() -> List[Tuple[str, str]]:
         print("Rate limited. Sleeping for 5 seconds...")
         time.sleep(5)
     else:
-        raise Exception(f"Failed to fetch messages. Status code: {response.status_code}")
+        raise Exception(f"Failed to fetch messages. Response: {response}")
 
     return latest_messages
 
