@@ -17,7 +17,7 @@ def load_config() -> Dict[str, Any]:
         config = json.load(f)
 
     # Override 'hf_dataset_name' if it exists in environment variables
-    env_hf_dataset_name = os.environ("HF_DATASET_NAME")
+    env_hf_dataset_name = os.environ["HF_DATASET_NAME"]
     if env_hf_dataset_name is not None:
         config["hf_dataset_name"] = env_hf_dataset_name
 
@@ -27,10 +27,20 @@ def load_config() -> Dict[str, Any]:
 
 
 def parse_message(message: Dict[str, Any]) -> List[Tuple[str, str]]:
-    # Assumes that message has the following format:
-    # "<prompt>"
-    # <image attachment>
-    prompt = message["content"].split('"')[1].strip()
+    # Get the content of the message
+    content = message["content"]
+    
+    # Find the index of the first quote in the content
+    first_quote_index = content.find('"')
+    
+    # Find the index of the last quote in the content
+    last_quote_index = content.rfind('"')
+    
+    # Extract the text between the first and last quotes to get the complete prompt
+    prompt = content[first_quote_index + 1:last_quote_index].strip()
+    print(prompt)
+    
+    # Extract URLs of all image attachments
     image_urls = [attachment["url"] for attachment in message["attachments"]]
 
     return [(prompt, image_url) for image_url in image_urls]
