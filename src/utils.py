@@ -15,8 +15,18 @@ def get_user_headers() -> Dict[str, str]:
 
 def load_config() -> Dict[str, Any]:
     with open('config.json', 'r') as f:
-        return json.load(f)
+        config = json.load(f)
     
+    # Override 'hf_dataset_name' if it exists in environment variables
+    env_hf_dataset_name = os.getenv('HF_DATASET_NAME')
+    if env_hf_dataset_name is not None:
+        config['hf_dataset_name'] = env_hf_dataset_name
+
+    print(f"Loaded config: {config}")
+
+    return config
+    
+
 def parse_message(message: Dict[str, Any]) -> List[Tuple[str, str]]:
     # Assumes that message has the following format:
     # "<prompt>"
@@ -25,6 +35,7 @@ def parse_message(message: Dict[str, Any]) -> List[Tuple[str, str]]:
     image_urls = [attachment["url"] for attachment in message["attachments"]]
 
     return [(prompt, image_url) for image_url in image_urls]
+
 
 def prepare_dataset(messages: List[Tuple[str, str]], config) -> Dataset:
     dataset = Dataset.from_dict({
@@ -36,6 +47,7 @@ def prepare_dataset(messages: List[Tuple[str, str]], config) -> Dataset:
     merged_dataset = merge_datasets(current_dataset, dataset)
 
     return merged_dataset
+
 
 def merge_datasets(old_dataset: Dataset, new_dataset: Dataset) -> Dataset:
     # Gather existing URLs from old_dataset using indices
