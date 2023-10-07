@@ -28,5 +28,6 @@ jobs:
     - name: Run backup.py
       env: # Set the secret as an input
         HF_TOKEN: ${{ secrets.HF_TOKEN_BACKUP }}
+        HF_DATASET_NAME: ${{ secrets.HF_DATASET_NAME }}
       run: |
         python src/backup.py
