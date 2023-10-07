@@ -1,9 +1,9 @@
-name: Run scrape_wuerstchen/scrape.py every 15 minutes
+name: Run scrape_wuerstchen/scrape.py every hour
 
 on:
   schedule:
-    # Run every 15 minutes
-    - cron: "*/15 * * * *"
+    # Cron to run every hour
+    - cron: "0 * * * *"
   workflow_dispatch: # manual trigger
 
 jobs:
@@ -29,5 +29,6 @@ jobs:
         env: # Set the secret as an input
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          PYTHONPATH: "."
         run: |
           python scrape_wuerstchen/scrape.py
