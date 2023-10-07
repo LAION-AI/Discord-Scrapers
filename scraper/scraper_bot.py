@@ -112,7 +112,7 @@ class ScraperBot:
             if after_message_id:
                 url += f'&after={after_message_id}'
 
-            print(f"Fetching messages from {url}...")
+            print(f"Fetching messages from {url}")
 
             response = requests.get(url, headers=self.headers)
 
@@ -131,14 +131,30 @@ class ScraperBot:
                 # Add the fetched messages to the list
                 all_messages.extend(parsed_messages)
 
+                # If the last message in the response has the same ID as the last message
+                # in the previous response, break out of the loop
+                if messages[-1]['id']==before_message_id:
+                    break
+
                 # Use the ID of the last message in the response as the 'before' parameter
                 # for the next request to fetch the next page of messages
                 before_message_id = messages[-1]['id']
             else:
                 print(f"Failed to fetch messages. Status code: {response.status_code}")
                 break
+        
+        # Ensure that there are no duplicate messages
+        unique_objects = set()
 
-        return all_messages
+        # Step 3 and 4: Iterate through the list and remove duplicates
+        unique_list = []
+
+        for obj in all_messages:
+            if obj not in unique_objects:
+                unique_objects.add(obj)
+                unique_list.append(obj)
+
+        return unique_list
     
     def scrape(self, fetch_all: bool=False, push_to_hub: bool=True) -> Dataset:
         try:
