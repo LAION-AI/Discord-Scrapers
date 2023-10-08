@@ -7,7 +7,7 @@ import requests
 import pandas as pd
 from datasets import load_dataset, Dataset, concatenate_datasets
 
-@dataclass
+@dataclass(frozen=True)
 class ScraperBotConfig:
     """Bot configuration that changes how the bot behaves"""
     base_url: str
