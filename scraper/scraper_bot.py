@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Callable, List, Tuple, Dict, Optional, Any
 
 import requests
-import pandas as pd
+from PIL import Image
 from datasets import load_dataset, Dataset, concatenate_datasets
 
 @dataclass
@@ -33,7 +33,8 @@ def prepare_dataset(messages: List[HFDatasetScheme]) -> Dataset:
     return Dataset.from_dict(
         {
             "caption": [msg.caption for msg in messages],
-            "link": [msg.link for msg in messages],
+            "image": [Image.open(requests.get(msg.link, stream=True).raw).convert("RGB") for msg in messages],
+            "link": [msg.link for msg in messages], # will maintain just because we use it to filter
             "message_id": [msg.message_id for msg in messages],
             "timestamp": [msg.timestamp for msg in messages]
         }
@@ -177,7 +178,8 @@ class ScraperBot:
         print(f"Fetched {len(messages)} messages.")
 
         new_dataset = prepare_dataset(messages)
-        if current_dataset is not None:
+
+        if current_dataset is not None and not fetch_all:
             ds = merge_datasets(current_dataset, new_dataset)
         else:
             ds = new_dataset
