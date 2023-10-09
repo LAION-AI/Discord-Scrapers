@@ -2,5 +2,5 @@
     "base_url": "https://discord.com/api/v9",
     "channel_id": "1158354590463447092",
     "limit": 100,
-    "hf_dataset_name": "EduardoPacheco/dalle-3-LAION-discord"
+    "hf_dataset_name": "laion/dalle-3-dataset"
 }
