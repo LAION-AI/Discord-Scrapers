@@ -110,12 +110,14 @@ def get_latest_message_id(df: pd.DataFrame) -> str:
 
 
 def get_bot_headers() -> Dict[str, str]:
+    print("Using bot headers")
     return {
         "Authorization": f"Bot {os.environ['DISCORD_TOKEN']}"
     }
 
 
 def get_user_headers() -> Dict[str, str]:
+    print("Using user headers")
     return {
         'authorization': os.environ['DISCORD_TOKEN']
     }
