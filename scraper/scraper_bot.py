@@ -109,6 +109,12 @@ def get_latest_message_id(df: pd.DataFrame) -> str:
         pass
 
 
+def get_bot_headers() -> Dict[str, str]:
+    return {
+        "Authorization": f"Bot {os.environ['DISCORD_TOKEN']}"
+    }
+
+
 def get_user_headers() -> Dict[str, str]:
     return {
         'authorization': os.environ['DISCORD_TOKEN']
@@ -143,7 +149,10 @@ class ScraperBot:
 
     @property
     def headers(self) -> Dict[str, str]:
-        return get_user_headers()
+        if os.environ.get("IS_CI") == 'true':
+            return get_bot_headers()
+        else:
+            return get_user_headers()
 
 
     def _get_messages(self, after_message_id: str) -> List[Dict[str, Any]]:
