@@ -21,7 +21,7 @@ def parse_fn(message: Dict[str, Any]) -> List[HFDatasetScheme]:
     timestamp = message["timestamp"]
     message_id = message["id"]
 
-    return [HFDatasetScheme(caption=prompt, link=image_url, message_id=message_id, timestamp=timestamp) 
+    return [HFDatasetScheme(caption=prompt, image=None, link=image_url, message_id=message_id, timestamp=timestamp) 
             for image_url in image_urls]
 
 def condition_fn(message: Dict[str, Any]) -> bool:
@@ -44,4 +44,4 @@ if __name__ == "__main__":
     config = ScraperBotConfig.from_json(config_path)
 
     bot = ScraperBot(config=config, parse_fn=parse_fn, condition_fn=condition_fn)
-    bot.scrape()
+    bot.scrape(fetch_all=True)

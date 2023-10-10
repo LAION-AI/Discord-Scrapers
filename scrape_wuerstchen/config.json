@@ -2,5 +2,5 @@
     "base_url": "https://discord.com/api/v9",
     "channel_id": "1151792944676864041",
     "limit": 100,
-    "hf_dataset_name": "EduardoPacheco/wuerstchen-hugging-face-discord"
+    "hf_dataset_name": "laion/wuerstchen-dataset"
 }
