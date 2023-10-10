@@ -243,12 +243,13 @@ class ScraperBot:
         # Convert to Hugging Face Dataset
         print(f"Converting to Hugging Face Dataset...")    
         ds = Dataset.from_dict(dataset_dict)
+        ds = ds.cast_column("image", Image(decode=True))
 
         # Push to the Hugging Face Hub
         print(f"Pushing dataset to the Hugging Face Hub...")
         print(ds)
 
         if push_to_hub:
-            ds.push_to_hub(self.hf_dataset_name, token=os.environ['HF_TOKEN'])
+            ds.push_to_hub(self.hf_dataset_name, embed_external_files=True, token=os.environ['HF_TOKEN'])
 
         return ds
