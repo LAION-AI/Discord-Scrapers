@@ -209,7 +209,7 @@ class ScraperBot:
         messages = self._get_messages(after_message_id=after_message_id)
         print(f"Fetched {len(messages)} messages.")
 
-        new_dataset = prepare_dataset(messages[:10])
+        new_dataset = prepare_dataset(messages)
 
         # Merge the new datafrane with the existing dataframe
         if current_dataset is not None:
