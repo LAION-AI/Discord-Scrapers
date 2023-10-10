@@ -40,6 +40,7 @@ class ScraperBotConfig:
 @dataclass(frozen=True)
 class HFDatasetScheme:
     caption: str
+    image: Image(decode=True)
     link: str
     message_id: str
     timestamp: str
@@ -56,22 +57,32 @@ def prepare_dataset(messages: List[HFDatasetScheme]) -> pd.DataFrame:
 
 # Download images
 def download_new_images_for_dataset(df: pd.DataFrame) -> pd.DataFrame:
-    # Identify the rows with NA in 'image' column
-    rows_to_download = df[df['image'].isnull()]
+    # Pandas doesn't do well with PIL images
+    # Reset the index and convert the DataFrame to a dictionary
+    df.reset_index(inplace=True)
+    df_dict = df.to_dict('index')
 
-    count_to_download = rows_to_download.shape[0]
+    # Identify rows with NA in the 'image' column
+    rows_to_download = {idx: row for idx, row in df_dict.items() if row['image'] is None}
+    count_to_download = len(rows_to_download)
     print(f"Downloading {count_to_download} new images...")
 
     # Loop to download images
-    for idx in tqdm(rows_to_download.index, desc="Downloading images", unit=" images"):
+    for idx in tqdm(rows_to_download.keys(), desc="Downloading images", unit=" images"):
+        image_url = rows_to_download[idx]['link']
         try:
-            image = PILImage.open(requests.get(df.at[idx, 'link'], stream=True).raw).convert("RGB")
-            df.at[idx, 'image'] = image
+            image = PILImage.open(requests.get(image_url, stream=True).raw).convert("RGB")
+            df_dict[idx]['image'] = image
         except Exception as e:
-            print(f"Error downloading image at {df.at[idx, 'link']}: {e}")
+            print(f"Error downloading image at {image_url}: {e}")
 
-    # Remove any rows where 'image' is still null
-    df.dropna(subset=['image'], inplace=True)
+    # Remove rows with NAs in 'image' column still after downloading
+    # To be filled in on next run
+    df_dict = {idx: row for idx, row in df_dict.items() if row['image'] is not None}
+
+    # Convert dictionary back to DataFrame
+    df = pd.DataFrame.from_dict(df_dict, orient='index')
+    df.set_index('index', inplace=True, drop=True)  # Set the index back to its original state
 
     return df
 
@@ -186,14 +197,6 @@ class ScraperBot:
         return unique_list
     
     def scrape(self, fetch_all: bool=False, push_to_hub: bool=True) -> Dataset:
-        features = Features({
-            'caption': Value(dtype='string'),
-            'image': Image(decode=True),
-            'link': Value(dtype='string'),
-            'message_id': Value(dtype='string'),
-            'timestamp': Value(dtype='string'),
-        })
-
         try:
             current_dataset = load_dataset(self.hf_dataset_name)['train'].to_pandas()
             after_message_id = get_latest_message_id(current_dataset) if not fetch_all else None
@@ -206,7 +209,7 @@ class ScraperBot:
         messages = self._get_messages(after_message_id=after_message_id)
         print(f"Fetched {len(messages)} messages.")
 
-        new_dataset = prepare_dataset(messages)
+        new_dataset = prepare_dataset(messages[:10])
 
         # Merge the new datafrane with the existing dataframe
         if current_dataset is not None:
@@ -217,15 +220,15 @@ class ScraperBot:
         else:
             df = new_dataset
 
-        print(f"New dataset has {df.shape[0]} rows.")
-
         df = download_new_images_for_dataset(df)
+
+        print(f"New dataset has {df.shape[0]} rows.")
 
         # Convert to Hugging Face Dataset
         # Dataset to_pandas doesn't handle images well, so we have to convert to dict first
         print(f"Converting to Hugging Face Dataset...")
         dataset_dict = df.to_dict(orient="list")
-        ds = Dataset.from_dict(dataset_dict, features=features)
+        ds = Dataset.from_dict(dataset_dict)
 
         # Push to the Hugging Face Hub
         print(f"Pushing dataset to the Hugging Face Hub...")
