@@ -30,6 +30,7 @@ jobs:
         env: # Set the secret as an input
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          IS_CI: ${{ secrets.IS_CI }}
           PYTHONPATH: "."
         run: |
           python scrape_dalle/scrape.py
