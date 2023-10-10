@@ -98,7 +98,6 @@ def merge_datasets(old_df: pd.DataFrame, new_df: pd.DataFrame) -> pd.DataFrame:
     # Concatenate the old and filtered new dataframes
     merged_df = pd.concat([old_df, filtered_new_df]) if old_df is not None else filtered_new_df
         
-    print(f"Merged DataFrame rows before return: {merged_df.shape[0]}")
     return merged_df
 
 
