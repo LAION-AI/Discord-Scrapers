@@ -151,7 +151,8 @@ class ScraperBot:
 
     @property
     def headers(self) -> Dict[str, str]:
-        if os.environ.get("IS_CI") == 'true':
+        print(f"IS_CI: {os.environ.get('IS_CI')}")
+        if os.environ.get("IS_CI") in 'true':
             return get_bot_headers()
         else:
             return get_user_headers()
