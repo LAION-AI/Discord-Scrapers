@@ -44,4 +44,4 @@ if __name__ == "__main__":
     config = ScraperBotConfig.from_json(config_path)
 
     bot = ScraperBot(config=config, parse_fn=parse_fn, condition_fn=condition_fn)
-    bot.scrape()
+    bot.scrape(fetch_all=True)

@@ -19,12 +19,6 @@ jobs:
         with:
           python-version: "3.x"
           cache: 'pip'
-      - name: Cache dataset
-        uses: actions/cache@v3
-        with:
-          key: ${{ runner.os }}-datasets
-          path: |
-            ~/.cache
 
       - name: Install dependencies
         run: |
