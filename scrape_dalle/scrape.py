@@ -1,6 +1,9 @@
 import os
 from typing import Any, Dict, List
 
+import sys
+sys.path.append("..")
+
 from scraper import ScraperBot, ScraperBotConfig, HFDatasetScheme
 
 def parse_fn(message: Dict[str, Any]) -> List[HFDatasetScheme]:
@@ -53,4 +56,4 @@ if __name__ == "__main__":
     config = ScraperBotConfig.from_json(config_path)
 
     bot = ScraperBot(config=config, parse_fn=parse_fn, condition_fn=condition_fn)
-    bot.scrape(fetch_all=True)
+    bot.scrape()
