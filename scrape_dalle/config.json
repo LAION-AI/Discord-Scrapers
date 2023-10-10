@@ -2,5 +2,5 @@
     "base_url": "https://discord.com/api/v9",
     "channel_id": "1158354590463447092",
     "limit": 100,
-    "hf_dataset_name": "ZachNagengast/dalle-3-dataset-debug"
+    "hf_dataset_name": "ZachNagengast/LAION-discord-dalle3"
 }
