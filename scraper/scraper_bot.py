@@ -11,14 +11,17 @@ from PIL import Image as PILImage
 from datasets import load_dataset, Dataset, concatenate_datasets, Image, Value, Features
 
 # Load environment variables from .env file if they exist
-# Mainly used for local development, github actions will set these variables on its own
-with open('.env') as f:
-    for line in f:
-        if line.strip():
-            key, value = line.strip().split('=', 1)
-            if value:
-                print(f"Setting {key} from .env file")
-                os.environ[key] = value
+# Mainly used for local development, github actions will set these variables on its own.
+if os.path.exists('.env'):
+    with open('.env') as f:
+        for line in f:
+            if line.strip():
+                key, value = line.strip().split('=', 1)
+                if value:
+                    print(f"Setting {key} from .env file")
+                    os.environ[key] = value
+else:
+    print(".env file not found, skipping.")
 
 @dataclass
 class ScraperBotConfig:
@@ -220,6 +223,7 @@ class ScraperBot:
 
         # Convert to Hugging Face Dataset
         # Dataset to_pandas doesn't handle images well, so we have to convert to dict first
+        print(f"Converting to Hugging Face Dataset...")
         dataset_dict = df.to_dict(orient="list")
         ds = Dataset.from_dict(dataset_dict, features=features)
 
