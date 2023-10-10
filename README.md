@@ -1,6 +1,6 @@
 # Discord-Scraper
 
-Pipeline to scrape prompt + image url pairs from Discord channels. The idea started by wanting to scrape the image-prompt pairs from [share-dalle-3](https://discord.com/channels/823813159592001537/1158354590463447092) Discord channel from `LAION` server. But now you can re-use the scraper to work with any channel you want.
+Pipeline to scrape prompt + image url pairs from Discord channels. The idea started by wanting to scrape the image-prompt pairs from [share-dalle-3](https://discord.com/channels/823813159592001537/1158354590463447092) Discord channel from [LAION server](https://discord.com/invite/eq3cAMZtCC). But now you can re-use the scraper to work with any channel you want.
 
 ## How to use
 
