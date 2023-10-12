@@ -1,14 +1,18 @@
+import io
 import os
 import time
 import json
+import math
 import pandas as pd
+import numpy as np
 from tqdm import tqdm
 from dataclasses import dataclass
-from typing import Callable, List, Tuple, Dict, Optional, Any
+from typing import Callable, List, Dict, Any
+from huggingface_hub import HfFileSystem, preupload_lfs_files, create_commit, CommitOperationCopy, CommitOperationDelete, CommitOperationAdd
 
 import requests
 from PIL import Image as PILImage
-from datasets import load_dataset, Dataset, concatenate_datasets, Image, Value, Features
+from datasets import Dataset, Image
 from dataclasses import fields
 
 # Load environment variables from .env file if they exist
@@ -31,6 +35,7 @@ class ScraperBotConfig:
     base_url: str
     channel_id: str
     limit: int
+    max_chunk_size: int
     hf_dataset_name: str
 
     @classmethod
@@ -87,25 +92,29 @@ def download_and_convert_images_for_dataframe(df: pd.DataFrame) -> dict:
 def merge_datasets(old_df: pd.DataFrame, new_df: pd.DataFrame) -> pd.DataFrame:
     # Gather existing URLs from old_df using indices if it exists
     existing_image_urls = old_df['link'].tolist() if old_df is not None else []
-    
+
     print(f"Current rows: {len(existing_image_urls)}")
-    
+
     # Filter new_df to only include rows that aren't in old_df
     filtered_new_df = new_df.loc[~new_df['link'].isin(existing_image_urls)]
-    
+
     print(f"Rows to add: {filtered_new_df.shape[0]}")
 
     # Concatenate the old and filtered new dataframes
     merged_df = pd.concat([old_df, filtered_new_df]) if old_df is not None else filtered_new_df
-        
+
     return merged_df
 
 
 def get_latest_message_id(df: pd.DataFrame) -> str:
     try:
-        return df["message_id"].max()
-    except:
-        pass
+        max_message = df['message_id'].astype(np.int64).max()
+        if math.isnan(max_message):
+            return None
+        return str(max_message)
+    except Exception as e:
+        print(e)
+        return None
 
 
 def get_bot_headers() -> Dict[str, str]:
@@ -119,6 +128,19 @@ def get_user_headers() -> Dict[str, str]:
         'authorization': os.environ['DISCORD_TOKEN']
     }
 
+
+def get_image(link: str) -> bytes:
+    image = PILImage.open(requests.get(link, stream=True).raw).convert("RGB")
+    img_byte_arr = io.BytesIO()
+    image.save(img_byte_arr, format='PNG')
+    return {'bytes': img_byte_arr.getvalue(), 'path': None}
+
+
+fs = HfFileSystem(token=os.environ['HF_TOKEN'])
+
+schema = [f.name for f in fields(HFDatasetScheme)]
+
+
 class ScraperBot:
     def __init__(self, config: ScraperBotConfig, condition_fn: Callable, parse_fn: Callable) -> None:
         """A bot that scrapes messages from a Discord channel and uploads them to the Hugging Face Hub.
@@ -130,7 +152,7 @@ class ScraperBot:
         condition_fn : Callable
             A function that receives a message with type Dict[str, Any] and returns a boolean.
         parse_fn : Callable
-            A function that receives a message with type Dict[str, Any] and returns a parsed 
+            A function that receives a message with type Dict[str, Any] and returns a parsed
             message with type List[HFDatasetScheme].
         """
         self.config = config
@@ -138,13 +160,12 @@ class ScraperBot:
         self.channel_id = config.channel_id
         self.limit = config.limit
         self.hf_dataset_name = config.hf_dataset_name
-        self.parse_fn = parse_fn        
+        self.parse_fn = parse_fn
         self.condition_fn = condition_fn
-    
+
     @property
     def url(self) -> str:
         return f'{self.base_url}/channels/{self.channel_id}/messages?limit={self.limit}'
-
 
     @property
     def headers(self) -> Dict[str, str]:
@@ -153,12 +174,87 @@ class ScraperBot:
         else:
             return get_user_headers()
 
+    @property
+    def fs_path(self) -> str:
+        return f"datasets/{self.hf_dataset_name}/data"
+
+    @property
+    def repo_path(self) -> str:
+        return "data"
+
+    def _get_chunk_names(self) -> None:
+        chunks = fs.glob(f"{self.fs_path}/**.parquet")
+        return [chunk.replace(f"{self.fs_path}/", '') for chunk in chunks]
+
+    def _update_chunk(self, df: pd.DataFrame, chunk_num: int) -> None:
+        chunks = self._get_chunk_names()
+        number_of_chunks = len(chunks)
+
+        # Save the current chunk
+        with fs.open(f"{self.fs_path}/train-{chunk_num:04d}-of-{number_of_chunks + 1:04d}.parquet", "wb") as f:
+            df.to_parquet(f)
+
+    def _new_chunk(self, df: pd.DataFrame) -> None:
+        # Rename all chunks to be of one number higher
+        chunks = self._get_chunk_names()
+        # re https://github.com/huggingface/huggingface_hub/issues/1733#issuecomment-1761942073,
+        # a commit should not have more than 100 operations (so not more than 50 files should be renamed at once).
+        # The issue is being timed out. testing shows that it should be fine for many rename operations.
+        # hf_hub only has CommitOperationCopy and CommitOperationDelete,
+        # but we can combine them into a CommitOperationRename
+        new_chunk_count = len(chunks) + 1
+        operations = []
+        for chunk in chunks:
+            key = int(chunk.split("-")[1])
+            from_name = f"{self.repo_path}/{chunk}"
+            to_name = f"{self.repo_path}/train-{key:04d}-of-{new_chunk_count:04d}.parquet"
+            operations.append(CommitOperationCopy(from_name, to_name))
+            operations.append(CommitOperationDelete(from_name))
+
+        addition = CommitOperationAdd(
+            path_in_repo=f"{self.repo_path}/train-{len(chunks):04d}-of-{new_chunk_count:04d}.parquet",
+            path_or_fileobj=df.to_parquet()
+        )
+        preupload_lfs_files(repo_id=self.hf_dataset_name, repo_type='dataset', token=os.environ['HF_TOKEN'],  additions=[addition])
+        operations.append(addition)
+
+        create_commit(
+            repo_id=self.hf_dataset_name,
+            repo_type='dataset',
+            commit_message="Rename chunks",
+            token=os.environ['HF_TOKEN'],
+            operations=operations,
+        )
+        # split into multiple commits. We can't split the copy and delete operations into separate commits
+
+    def _load_dataset(self) -> (Dataset, int):
+        chunks = self._get_chunk_names()
+        if len(chunks) == 0:
+            return (None, 0)
+        # sort in descending order. The naming scheme is  train-<x>-of-<y>-<hash>.parquet
+        chunks.sort(key=lambda x: int(x.split("-")[1]), reverse=True)
+        df = pd.read_parquet(fs.open(f"{self.fs_path}/{chunks[0]}", "rb"))
+        chunk_num = int(chunks[0].split("-")[1])
+
+        # This is a temporary fix for the transition period between the old and new saving schemes
+        # Search all chunks for the max message id
+        # TODO: Remove this once we are sure that all datasets have a new chunk - that guarantees that the latest message id is in the last chunk
+        latest_message_id = '0'
+        for chunk in chunks:
+            _df = pd.read_parquet(fs.open(f"{self.fs_path}/{chunk}", "rb"))
+            _latest_message_id = get_latest_message_id(df)
+            if _latest_message_id > latest_message_id:
+                latest_message_id = _latest_message_id
+                df = _df
+                chunk_num = int(chunk.split("-")[1])
+
+        return (df, chunk_num)
 
     def _get_messages(self, after_message_id: str) -> List[Dict[str, Any]]:
         all_messages = []
         before_message_id = None
-        
-        progress = tqdm(desc="Fetching messages", unit=" messages")
+
+        progress = tqdm(desc="Fetched messages", unit=" messages")
 
         while True:
             url = self.url
@@ -166,22 +262,23 @@ class ScraperBot:
                 url += f'&before={before_message_id}'
             if after_message_id:
                 url += f'&after={after_message_id}'
-            
+
             response = requests.get(url, headers=self.headers)
 
             if response.status_code == 200:
                 messages = response.json()
-                
+
                 if not messages:
                     break
 
                 parsed_messages = [self.parse_fn(msg) for msg in messages if self.condition_fn(msg)]
                 parsed_messages = [msg for msg_list in parsed_messages for msg in msg_list]
+
                 all_messages.extend(parsed_messages)
-                
+
                 # Update tqdm progress bar
                 progress.update(len(parsed_messages))
-                
+
                 if messages[-1]['id'] == before_message_id:
                     break
 
@@ -192,64 +289,48 @@ class ScraperBot:
             else:
                 print(f"Failed to fetch messages. Response: {response.json()}")
                 break
-        
+
         # Close the tqdm progress bar
         progress.close()
-        
+
         unique_objects = set()
         unique_list = []
         for obj in all_messages:
             if obj not in unique_objects:
                 unique_objects.add(obj)
                 unique_list.append(obj)
-
+        unique_list.sort(key=lambda x: x.message_id)
         return unique_list
 
-
-    def scrape(self, fetch_all: bool=False, push_to_hub: bool=True) -> Dataset:
-        schema = [f.name for f in fields(HFDatasetScheme)]
-
-        print(f"Beginning scrape for {self.hf_dataset_name} with schema {schema}")
-
-        try:
-            current_dataset = load_dataset(self.hf_dataset_name)['train'].to_pandas()[schema]
-            after_message_id = get_latest_message_id(current_dataset) if not fetch_all else None
-            print(f"Current dataset has {current_dataset.shape[0]} rows. Last message ID: {after_message_id}.")
-        except Exception as e:
-            current_dataset = None
+    def scrape(self, fetch_all: bool = False, push_to_hub: bool = True) -> Dataset:
+        (chunk, chunk_num) = self._load_dataset()
+        if chunk is None:
+            print("No existing dataset found.")
+            chunk = pd.DataFrame(columns=schema)
             after_message_id = None
-            print(f"No existing dataset found. {e}")
-    
-        messages = self._get_messages(after_message_id=after_message_id)
-        print(f"Fetched {len(messages)} messages.")
-
-        new_dataset = prepare_dataset(messages)
-
-        # Merge the new datafrane with the existing dataframe
-        if current_dataset is not None:
-            df = merge_datasets(current_dataset, new_dataset)
-            if df.shape[0] == current_dataset.shape[0]:
-                print("No new rows. Exiting...")
-                return
         else:
-            df = new_dataset
+            after_message_id = get_latest_message_id(chunk) if not fetch_all else None
+        messages = self._get_messages(after_message_id=after_message_id)
+        messages = prepare_dataset(messages)
 
-        # Transform df_dict so that each key maps to a list of values
-        dataset_dict = download_and_convert_images_for_dataframe(df)
+        if not len(messages):
+            print("No new messages found.")
+            return
 
-        # Get the new dataset size
-        print(f"New dataset has {len(dataset_dict['link'])} rows and schema: {dataset_dict.keys()}")
+        for index, row in tqdm(messages.iterrows()):
+            if len(chunk) >= self.config.max_chunk_size:
+                self._update_chunk(chunk, chunk_num)
+                time.sleep(5)  # Sleep for 5 seconds to avoid race conditions
+                # Save the current chunk
+                chunk = pd.DataFrame(columns=schema)
+                chunk_num += 1
+                self._new_chunk(chunk)
 
-        # Convert to Hugging Face Dataset
-        print(f"Converting to Hugging Face Dataset...")    
-        ds = Dataset.from_dict(dataset_dict)
-        ds = ds.cast_column("image", Image(decode=True))
+            try:
+                row['image'] = get_image(row['link'])
+                chunk = pd.concat([chunk, pd.DataFrame([row])], ignore_index=True)
+            except Exception as e:
+                print(f"Error downloading image at {row['link']}: {e}")
 
-        # Push to the Hugging Face Hub
-        print(f"Pushing dataset to the Hugging Face Hub...")
-        print(ds)
-
-        if push_to_hub:
-            ds.push_to_hub(self.hf_dataset_name, embed_external_files=True, token=os.environ['HF_TOKEN'])
-
-        return ds
+        time.sleep(5)  # Sleep for 5 seconds to avoid race conditions
+        self._update_chunk(chunk, chunk_num)
