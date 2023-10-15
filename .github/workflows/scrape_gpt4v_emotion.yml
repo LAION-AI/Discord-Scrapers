@@ -1,4 +1,4 @@
-name: Run scrape_gpt4_emotions/scrape.py every hour
+name: Run scrape_gpt4v_emotions/scrape.py every hour
 
 on:
   schedule:
@@ -26,11 +26,11 @@ jobs:
           pwd
           ls -la
 
-      - name: Run scrape_gpt4_emotions/scrape.py
+      - name: Run scrape_gpt4v_emotions/scrape.py
         env: # Set the secret as an input
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           IS_CI: ${{ secrets.IS_CI }}
           PYTHONPATH: "."
         run: |
-          python scrape_gpt4_emotions/scrape.py
+          python scrape_gpt4v_emotions/scrape.py
