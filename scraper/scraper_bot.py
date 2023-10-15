@@ -221,7 +221,7 @@ class ScraperBot:
         except Exception as e:
             current_dataset = None
             after_message_id = None
-        print(f"No existing dataset found. {e}")
+            print(f"No existing dataset found. {e}")
     
         messages = self._get_messages(after_message_id=after_message_id)
 
