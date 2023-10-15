@@ -155,7 +155,7 @@ class ScraperBot:
         before_message_id = None
         
         progress = tqdm(desc="Fetching messages", unit=" messages")
-
+        total_messages = 0
         while True:
             url = self.url
             if before_message_id:
@@ -167,6 +167,7 @@ class ScraperBot:
 
             if response.status_code == 200:
                 messages = response.json()
+                total_messages += len(messages)
                 
                 if not messages:
                     break
@@ -176,7 +177,7 @@ class ScraperBot:
                 all_messages.extend(parsed_messages)
                 
                 # Update tqdm progress bar
-                progress.update(len(parsed_messages))
+                progress.update(len(messages))
                 
                 if messages[-1]['id'] == before_message_id:
                     break
@@ -199,6 +200,8 @@ class ScraperBot:
                 unique_objects.add(obj)
                 unique_list.append(obj)
 
+        print(f"Found {len(unique_list)} valid samples out of {total_messages} messages.")
+
         return unique_list
 
 
@@ -218,10 +221,9 @@ class ScraperBot:
         except Exception as e:
             current_dataset = None
             after_message_id = None
-            print(f"No existing dataset found. {e}")
+        print(f"No existing dataset found. {e}")
     
         messages = self._get_messages(after_message_id=after_message_id)
-        print(f"Fetched {len(messages)} messages.")
 
         new_dataset = prepare_dataset(messages)
 

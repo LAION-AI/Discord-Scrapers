@@ -3,5 +3,5 @@
     "channel_id": "1158354590463447092",
     "limit": 100,
     "embed_images": true,
-    "hf_dataset_name": "ZachNagengast/dalle-3-dataset-debug"
+    "hf_dataset_name": "laion/dalle-3-dataset"
 }
