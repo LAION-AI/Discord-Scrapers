@@ -243,14 +243,14 @@ class ScraperBot:
         for chunk in chunks:
             _df = pd.read_parquet(fs.open(f"{self.fs_path}/{chunk}", "rb"))
             _latest_message_id = get_latest_message_id(df)
-            if _latest_message_id > latest_message_id:
+            if _latest_message_id and _latest_message_id > latest_message_id:
                 latest_message_id = _latest_message_id
                 df = _df
                 chunk_num = int(chunk.split("-")[1])
 
         return (df, chunk_num)
 
-    def filter_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def filter_messages(self, messages: List[HFDatasetScheme]) -> List[HFDatasetScheme]:
         # Iterate over the whole dataset and remove all messages that are already in the dataset
         chunks = self._get_chunk_names()
         if len(chunks) == 0:
@@ -259,11 +259,11 @@ class ScraperBot:
         for chunk in tqdm(chunks, desc="Filtering messages", unit=" chunks"):
             df = pd.read_parquet(fs.open(f"{self.fs_path}/{chunk}", "rb"))
             existing_message_ids = df['message_id'].tolist()
-            messages = [msg for msg in messages if msg['message_id'] not in existing_message_ids]
+            messages = [msg for msg in messages if msg.message_id not in existing_message_ids]
 
         return messages
 
-    def _get_messages(self, after_message_id: str) -> List[Dict[str, Any]]:
+    def _get_messages(self, after_message_id: str) -> List[HFDatasetScheme]:
         all_messages = []
         before_message_id = None
 
