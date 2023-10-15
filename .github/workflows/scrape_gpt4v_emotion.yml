@@ -33,4 +33,4 @@ jobs:
           IS_CI: ${{ secrets.IS_CI }}
           PYTHONPATH: "."
         run: |
-          python scrape_gpt4v_emotions/scrape.py
+          python scrape_gpt4v_emotion/scrape.py
