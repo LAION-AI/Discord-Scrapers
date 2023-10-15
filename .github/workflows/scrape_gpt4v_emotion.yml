@@ -1,0 +1,36 @@
+name: Run scrape_gpt4v_emotion/scrape.py every hour
+
+on:
+  schedule:
+    # Cron to run every hour
+    - cron: "0 * * * *"
+  workflow_dispatch: # manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.x"
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pwd
+          ls -la
+
+      - name: Run scrape_gpt4v_emotion/scrape.py
+        env: # Set the secret as an input
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          IS_CI: ${{ secrets.IS_CI }}
+          PYTHONPATH: "."
+        run: |
+          python scrape_gpt4v_emotions/scrape.py

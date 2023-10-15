@@ -6,6 +6,7 @@ from scraper import ScraperBot, ScraperBotConfig, HFDatasetScheme
 
 url_pattern = re.compile(r'https?://\S+')
 
+
 def parse_fn(message: Dict[str, Any]) -> List[HFDatasetScheme]:
     """Parses a message into a list of Hugging Face Dataset Schemes.
 

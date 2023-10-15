@@ -36,6 +36,7 @@ class ScraperBotConfig:
     channel_id: str
     limit: int
     max_chunk_size: int
+    embed_images: bool
     hf_dataset_name: str
 
     @classmethod
@@ -138,9 +139,6 @@ def get_image(link: str) -> bytes:
 
 fs = HfFileSystem(token=os.environ['HF_TOKEN'])
 
-schema = [f.name for f in fields(HFDatasetScheme)]
-
-
 class ScraperBot:
     def __init__(self, config: ScraperBotConfig, condition_fn: Callable, parse_fn: Callable) -> None:
         """A bot that scrapes messages from a Discord channel and uploads them to the Hugging Face Hub.
@@ -159,9 +157,17 @@ class ScraperBot:
         self.base_url = config.base_url
         self.channel_id = config.channel_id
         self.limit = config.limit
+        self.embed_images = config.embed_images
         self.hf_dataset_name = config.hf_dataset_name
         self.parse_fn = parse_fn
         self.condition_fn = condition_fn
+
+    @property
+    def schema(self):
+        schema = [f.name for f in fields(HFDatasetScheme)]
+        if not self.embed_images:
+            schema.remove("image")
+        return schema
 
     @property
     def url(self) -> str:
@@ -268,6 +274,7 @@ class ScraperBot:
         before_message_id = None
 
         progress = tqdm(desc="Fetched messages", unit=" messages")
+        total_messages = 0
 
         while True:
             url = self.url
@@ -280,6 +287,7 @@ class ScraperBot:
 
             if response.status_code == 200:
                 messages = response.json()
+                total_messages += len(messages)
 
                 if not messages:
                     break
@@ -315,11 +323,11 @@ class ScraperBot:
         unique_list.sort(key=lambda x: x.message_id)
         return unique_list
 
-    def scrape(self, fetch_all: bool = False, download_images: bool = True) -> Dataset:
+    def scrape(self, fetch_all: bool = False) -> Dataset:
         (chunk, chunk_num) = self._load_dataset()
         if chunk is None:
             print("No existing dataset found.")
-            chunk = pd.DataFrame(columns=schema)
+            chunk = pd.DataFrame(columns=self.schema)
             after_message_id = None
         else:
             after_message_id = get_latest_message_id(chunk) if not fetch_all else None
@@ -336,12 +344,12 @@ class ScraperBot:
                 self._update_chunk(chunk, chunk_num)
                 time.sleep(5)  # Sleep for 5 seconds to avoid race conditions
                 # Save the current chunk
-                chunk = pd.DataFrame(columns=schema)
+                chunk = pd.DataFrame(columns=self.schema)
                 chunk_num += 1
                 self._new_chunk(chunk)
 
             try:
-                if download_images:
+                if self.embed_images:
                     row['image'] = get_image(row['link'])
                 chunk = pd.concat([chunk, pd.DataFrame([row])], ignore_index=True)
             except Exception as e:

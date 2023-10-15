@@ -3,5 +3,6 @@
     "channel_id": "1158354590463447092",
     "limit": 100,
     "max_chunk_size": 300,
+    "embed_images": true,
     "hf_dataset_name": "laion/dalle-3-dataset"
 }

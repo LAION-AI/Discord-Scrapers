@@ -1,7 +1,8 @@
 {
     "base_url": "https://discord.com/api/v9",
-    "channel_id": "1151792944676864041",
+    "channel_id": "1161398740595265626",
     "limit": 100,
     "max_chunk_size": 300,
+    "embed_images": true,
     "hf_dataset_name": "laion/wuerstchen-dataset"
 }
