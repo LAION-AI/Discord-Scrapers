@@ -1,0 +1,6 @@
+{
+  "base_url": "https://discord.com/api/v9",
+  "channel_id": "1162094554472788029",
+  "limit": 100,
+  "hf_dataset_name": "TwoAbove/gpt4v-emotion-dataset"
+}
