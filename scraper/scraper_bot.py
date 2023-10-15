@@ -31,6 +31,7 @@ class ScraperBotConfig:
     base_url: str
     channel_id: str
     limit: int
+    embed_images: bool
     hf_dataset_name: str
 
     @classmethod
@@ -60,21 +61,15 @@ def prepare_dataset(messages: List[HFDatasetScheme]) -> pd.DataFrame:
 
 
 # Download images
-def download_and_convert_images_for_dataframe(df: pd.DataFrame) -> dict:
-    # Convert the DataFrame to a dictionary
-    df_dict = df.to_dict('list')
-
-    # Initialize dataset_dict with existing data
-    dataset_dict = {key: df_dict[key][:] for key in df_dict.keys()}
-
+def download_and_convert_images_for_dataframe(dataset_dict: dict) -> dict:
     # Identify rows with NA in the 'image' column
-    rows_to_download = [idx for idx, image in enumerate(df_dict['image']) if image is None]
+    rows_to_download = [idx for idx, image in enumerate(dataset_dict['image']) if image is None]
     count_to_download = len(rows_to_download)
     print(f"Downloading {count_to_download} new images...")
 
     # Loop to download images
     for idx in tqdm(rows_to_download, desc="Downloading images", unit=" images"):
-        image_url = df_dict['link'][idx]
+        image_url = dataset_dict['link'][idx]
         try:
             image = PILImage.open(requests.get(image_url, stream=True).raw).convert("RGB")
             dataset_dict['image'][idx] = image  # Replace the None value
@@ -137,6 +132,7 @@ class ScraperBot:
         self.base_url = config.base_url
         self.channel_id = config.channel_id
         self.limit = config.limit
+        self.embed_images = config.embed_images
         self.hf_dataset_name = config.hf_dataset_name
         self.parse_fn = parse_fn        
         self.condition_fn = condition_fn
@@ -209,6 +205,10 @@ class ScraperBot:
     def scrape(self, fetch_all: bool=False, push_to_hub: bool=True) -> Dataset:
         schema = [f.name for f in fields(HFDatasetScheme)]
 
+        # Drop images if we're not embedding them
+        if not self.embed_images:
+            schema.remove("image")
+
         print(f"Beginning scrape for {self.hf_dataset_name} with schema {schema}")
 
         try:
@@ -235,21 +235,38 @@ class ScraperBot:
             df = new_dataset
 
         # Transform df_dict so that each key maps to a list of values
-        dataset_dict = download_and_convert_images_for_dataframe(df)
+        dataset_dict = df.to_dict('list')
 
         # Get the new dataset size
         print(f"New dataset has {len(dataset_dict['link'])} rows and schema: {dataset_dict.keys()}")
 
-        # Convert to Hugging Face Dataset
-        print(f"Converting to Hugging Face Dataset...")    
-        ds = Dataset.from_dict(dataset_dict)
-        ds = ds.cast_column("image", Image(decode=True))
+        if self.embed_images:
+            print(f"Downloading and converting images...")
+            dataset_dict = download_and_convert_images_for_dataframe(dataset_dict)
+
+            # Convert to Hugging Face Dataset
+            print(f"Converting to Hugging Face Dataset...")    
+            ds = Dataset.from_dict(dataset_dict)
+
+            print("Embedding images...")
+            ds = ds.cast_column("image", Image(decode=True))
+        else:
+            # Convert to Hugging Face Dataset
+            print(f"Converting to Hugging Face Dataset...")    
+            ds = Dataset.from_dict(dataset_dict)
+            
+            print("Dropping images...")
+            ds = ds.remove_columns(["image"])
+
+        
 
         # Push to the Hugging Face Hub
         print(f"Pushing dataset to the Hugging Face Hub...")
         print(ds)
 
         if push_to_hub:
-            ds.push_to_hub(self.hf_dataset_name, embed_external_files=True, token=os.environ['HF_TOKEN'])
+            ds.push_to_hub(self.hf_dataset_name, embed_external_files=self.embed_images, token=os.environ['HF_TOKEN'])
+
+        print(f"Successfully uploaded to the Hugging Face Hub at https://huggingface.co/datasets/{self.hf_dataset_name}")
 
         return ds

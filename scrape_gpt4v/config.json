@@ -2,5 +2,6 @@
     "base_url": "https://discord.com/api/v9",
     "channel_id": "1159217496390389801",
     "limit": 100,
+    "embed_images": false,
     "hf_dataset_name": "laion/gpt4v-dataset"
 }
