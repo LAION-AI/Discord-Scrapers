@@ -315,7 +315,7 @@ class ScraperBot:
         unique_list.sort(key=lambda x: x.message_id)
         return unique_list
 
-    def scrape(self, fetch_all: bool = False, push_to_hub: bool = True) -> Dataset:
+    def scrape(self, fetch_all: bool = False, download_images: bool = True) -> Dataset:
         (chunk, chunk_num) = self._load_dataset()
         if chunk is None:
             print("No existing dataset found.")
@@ -341,7 +341,8 @@ class ScraperBot:
                 self._new_chunk(chunk)
 
             try:
-                row['image'] = get_image(row['link'])
+                if download_images:
+                    row['image'] = get_image(row['link'])
                 chunk = pd.concat([chunk, pd.DataFrame([row])], ignore_index=True)
             except Exception as e:
                 print(f"Error downloading image at {row['link']}: {e}")
