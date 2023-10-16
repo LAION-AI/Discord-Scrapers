@@ -3,6 +3,7 @@ import re
 from typing import Any, Dict, List
 
 from scraper import ScraperBot, ScraperBotConfig, HFDatasetScheme
+from helpers import starts_with_quotes, get_start_end_quotes
 
 url_pattern = re.compile(r'https?://\S+')
 
@@ -22,11 +23,7 @@ def parse_fn(message: Dict[str, Any]) -> List[HFDatasetScheme]:
     """
     content = message["content"]
 
-    # Find the index of the first quote in the content
-    first_quote_index = content.find('"')
-
-    # Find the index of the last quote in the content
-    last_quote_index = content.rfind('"')
+    (first_quote_index, last_quote_index) = get_start_end_quotes(content)
 
     # Extract the text between the first and last quotes to get the complete prompt
     prompt = content[first_quote_index + 1:last_quote_index].strip()
@@ -51,7 +48,7 @@ def condition_fn(message: Dict[str, Any]) -> bool:
     bool
         True if the message meets the condition, False otherwise.
     """
-    return url_pattern.search(message["content"]) and message["content"].startswith('"')
+    return url_pattern.search(message["content"]) and starts_with_quotes(message["content"])
 
 
 if __name__ == "__main__":

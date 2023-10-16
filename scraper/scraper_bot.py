@@ -207,6 +207,9 @@ class ScraperBot:
                     selected_chunk = chunk
                     break
 
+        if selected_chunk is None:
+            selected_chunk = f"train-{chunk_num:04d}-of-{len(chunks)+1:04d}.parquet"
+
         # Save the current chunk
         with fs.open(f"{self.fs_path}/{selected_chunk}", "wb") as f:
             df.to_parquet(f)
@@ -359,6 +362,7 @@ class ScraperBot:
                 chunk = pd.DataFrame(columns=self.schema)
                 chunk_num += 1
                 self._new_chunk(chunk)
+                time.sleep(5)  # Sleep for 5 seconds to avoid race conditions
 
             try:
                 if self.embed_images:
