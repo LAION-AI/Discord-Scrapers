@@ -139,6 +139,7 @@ def get_image(link: str) -> bytes:
 
 fs = HfFileSystem(token=os.environ['HF_TOKEN'])
 
+
 class ScraperBot:
     def __init__(self, config: ScraperBotConfig, condition_fn: Callable, parse_fn: Callable) -> None:
         """A bot that scrapes messages from a Discord channel and uploads them to the Hugging Face Hub.
@@ -194,10 +195,17 @@ class ScraperBot:
 
     def _update_chunk(self, df: pd.DataFrame, chunk_num: int) -> None:
         chunks = self._get_chunk_names()
-        number_of_chunks = len(chunks)
+
+        # find the chunk that we want to update
+        selected_chunk = None
+        for chunk in chunks:
+            key = int(chunk.split("-")[1])
+            if key == chunk_num:
+                selected_chunk = chunk
+                break
 
         # Save the current chunk
-        with fs.open(f"{self.fs_path}/train-{chunk_num:04d}-of-{number_of_chunks + 1:04d}.parquet", "wb") as f:
+        with fs.open(f"{self.fs_path}/{selected_chunk}", "wb") as f:
             df.to_parquet(f)
 
     def _new_chunk(self, df: pd.DataFrame) -> None:
