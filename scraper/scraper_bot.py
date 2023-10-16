@@ -196,13 +196,16 @@ class ScraperBot:
     def _update_chunk(self, df: pd.DataFrame, chunk_num: int) -> None:
         chunks = self._get_chunk_names()
 
-        # find the chunk that we want to update
-        selected_chunk = None
-        for chunk in chunks:
-            key = int(chunk.split("-")[1])
-            if key == chunk_num:
-                selected_chunk = chunk
-                break
+        if len(chunks) == 0:
+            selected_chunk = f"train-{0:04d}-of-{1:04d}.parquet"
+        else:
+            # find the chunk that we want to update
+            selected_chunk = None
+            for chunk in chunks:
+                key = int(chunk.split("-")[1])
+                if key == chunk_num:
+                    selected_chunk = chunk
+                    break
 
         # Save the current chunk
         with fs.open(f"{self.fs_path}/{selected_chunk}", "wb") as f:
@@ -336,6 +339,7 @@ class ScraperBot:
         if chunk is None:
             print("No existing dataset found.")
             chunk = pd.DataFrame(columns=self.schema)
+            chunk_num = 0
             after_message_id = None
         else:
             after_message_id = get_latest_message_id(chunk) if not fetch_all else None
@@ -363,5 +367,5 @@ class ScraperBot:
             except Exception as e:
                 print(f"Error downloading image at {row['link']}: {e}")
 
-        time.sleep(5)  # Sleep for 5 seconds to avoid race conditions
+        # time.sleep(5)  # Sleep for 5 seconds to avoid race conditions
         self._update_chunk(chunk, chunk_num)
