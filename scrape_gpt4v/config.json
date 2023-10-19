@@ -3,5 +3,6 @@
     "channel_id": "1159217496390389801",
     "limit": 100,
     "max_chunk_size": 300,
-    "hf_dataset_name": "laion/gpt4v-dataset"
+    "embed_images": false,
+    "hf_dataset_name": "ZachNagengast/test-gpt4v-dataset"
 }

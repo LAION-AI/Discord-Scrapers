@@ -36,6 +36,7 @@ class ScraperBotConfig:
     channel_id: str
     limit: int
     max_chunk_size: int
+    embed_images: bool
     hf_dataset_name: str
 
     @classmethod
@@ -65,21 +66,15 @@ def prepare_dataset(messages: List[HFDatasetScheme]) -> pd.DataFrame:
 
 
 # Download images
-def download_and_convert_images_for_dataframe(df: pd.DataFrame) -> dict:
-    # Convert the DataFrame to a dictionary
-    df_dict = df.to_dict('list')
-
-    # Initialize dataset_dict with existing data
-    dataset_dict = {key: df_dict[key][:] for key in df_dict.keys()}
-
+def download_and_convert_images_for_dataframe(dataset_dict: dict) -> dict:
     # Identify rows with NA in the 'image' column
-    rows_to_download = [idx for idx, image in enumerate(df_dict['image']) if image is None]
+    rows_to_download = [idx for idx, image in enumerate(dataset_dict['image']) if image is None]
     count_to_download = len(rows_to_download)
     print(f"Downloading {count_to_download} new images...")
 
     # Loop to download images
     for idx in tqdm(rows_to_download, desc="Downloading images", unit=" images"):
-        image_url = df_dict['link'][idx]
+        image_url = dataset_dict['link'][idx]
         try:
             image = PILImage.open(requests.get(image_url, stream=True).raw).convert("RGB")
             dataset_dict['image'][idx] = image  # Replace the None value
@@ -159,6 +154,7 @@ class ScraperBot:
         self.base_url = config.base_url
         self.channel_id = config.channel_id
         self.limit = config.limit
+        self.embed_images = config.embed_images
         self.hf_dataset_name = config.hf_dataset_name
         self.parse_fn = parse_fn
         self.condition_fn = condition_fn
@@ -190,8 +186,8 @@ class ScraperBot:
         chunks = self._get_chunk_names()
         number_of_chunks = len(chunks)
 
-        # Save the current chunk
-        with fs.open(f"{self.fs_path}/train-{chunk_num:04d}-of-{number_of_chunks + 1:04d}.parquet", "wb") as f:
+        # Save the current chunk, this uploads to hf_hub
+        with fs.open(f"{self.fs_path}/train-{chunk_num:05d}-of-{number_of_chunks + 1:05d}.parquet", "wb") as f:
             df.to_parquet(f)
 
     def _new_chunk(self, df: pd.DataFrame) -> None:
@@ -267,8 +263,9 @@ class ScraperBot:
         all_messages = []
         before_message_id = None
 
-        progress = tqdm(desc="Fetched messages", unit=" messages")
-
+        progress = tqdm(desc="Fetching messages", unit=" messages")
+        total_messages = 0
+        
         while True:
             url = self.url
             if before_message_id:
@@ -280,7 +277,8 @@ class ScraperBot:
 
             if response.status_code == 200:
                 messages = response.json()
-
+                total_messages += len(messages)
+                
                 if not messages:
                     break
 
@@ -290,8 +288,8 @@ class ScraperBot:
                 all_messages.extend(parsed_messages)
 
                 # Update tqdm progress bar
-                progress.update(len(parsed_messages))
-
+                progress.update(len(messages))
+                
                 if messages[-1]['id'] == before_message_id:
                     break
 
@@ -312,27 +310,53 @@ class ScraperBot:
             if obj not in unique_objects:
                 unique_objects.add(obj)
                 unique_list.append(obj)
+
         unique_list.sort(key=lambda x: x.message_id)
+        print(f"Found {len(unique_list)} valid samples out of {total_messages} messages.")
+
         return unique_list
 
-    def scrape(self, fetch_all: bool = False, download_images: bool = True) -> Dataset:
-        (chunk, chunk_num) = self._load_dataset()
-        if chunk is None:
-            print("No existing dataset found.")
-            chunk = pd.DataFrame(columns=schema)
-            after_message_id = None
-        else:
-            after_message_id = get_latest_message_id(chunk) if not fetch_all else None
-        messages = self._get_messages(after_message_id=after_message_id)
-        messages = self.filter_messages(messages) if fetch_all else messages
-        messages = prepare_dataset(messages)
 
+    def scrape(self, fetch_all: bool=False, push_to_hub: bool=True) -> Dataset:
+        schema = [f.name for f in fields(HFDatasetScheme)]
+
+        # Drop images if we're not embedding them
+        if not self.embed_images:
+            schema.remove("image")
+
+        print(f"Beginning scrape for {self.hf_dataset_name} with schema {schema}")
+
+        # Load the current dataset without images initially, to figure out what we're working with
+        current_dataset, chunk_count = self._load_dataset(with_images=False) #TODO: be able to return (None, 0) here
+        after_message_id = get_latest_message_id(current_dataset) if not fetch_all else None # TODO: inside here return none if dataset is empty
+
+        print(f"Current dataset has {current_dataset.shape[0] if current_dataset is not None else 0} rows and {chunk_count} chunks.")
+        print(f"Last message ID: {after_message_id}.")
+
+        messages = self._get_messages(after_message_id=after_message_id) # TODO: handle none here
+
+        # Early return if no messages
         if not len(messages):
             print("No new messages found.")
             return
+        
+        # Filter messages
+        filtered_messages = self.filter_messages(messages) # TODO figure out why this is needed -> `if fetch_all else messages`
+        new_message_dataset = prepare_dataset(messages) # TODO: this will always have data
 
-        for index, row in tqdm(messages.iterrows()):
-            if len(chunk) >= self.config.max_chunk_size:
+        print(f"New dataset has {len(new_message_dataset['link'])} rows and schema: {new_message_dataset.keys()}")
+
+        if self.embed_images:
+            print(f"Downloading and converting images...")
+            # TODO 
+            new_message_dataset = download_and_convert_images_for_dataframe(new_message_dataset)
+
+
+        # TODO: Find chunk needed from current_dataset
+        # TODO: Merge with message_dataset, creating new chunks as needed
+
+        for index, row in tqdm(new_message_dataset.iterrows()):
+            if len(current_dataset) >= self.config.max_chunk_size:
                 self._update_chunk(chunk, chunk_num)
                 time.sleep(5)  # Sleep for 5 seconds to avoid race conditions
                 # Save the current chunk
@@ -340,12 +364,34 @@ class ScraperBot:
                 chunk_num += 1
                 self._new_chunk(chunk)
 
-            try:
-                if download_images:
-                    row['image'] = get_image(row['link'])
-                chunk = pd.concat([chunk, pd.DataFrame([row])], ignore_index=True)
-            except Exception as e:
-                print(f"Error downloading image at {row['link']}: {e}")
-
         time.sleep(5)  # Sleep for 5 seconds to avoid race conditions
         self._update_chunk(chunk, chunk_num)
+
+
+        # if self.embed_images:
+        #     print(f"Downloading and converting images...")
+        #     dataset_dict = download_and_convert_images_for_dataframe(dataset_dict)
+
+        #     # Convert to Hugging Face Dataset
+        #     print(f"Converting to Hugging Face Dataset...")    
+        #     ds = Dataset.from_dict(dataset_dict)
+
+
+        # else:
+        #     # Convert to Hugging Face Dataset
+        #     print(f"Converting to Hugging Face Dataset...")    
+        #     ds = Dataset.from_dict(dataset_dict)
+            
+        #     print("Dropping images...")
+        #     ds = ds.remove_columns(["image"])      
+
+        # # Push to the Hugging Face Hub
+        # print(f"Pushing dataset to the Hugging Face Hub...")
+        # print(ds)
+
+        # if push_to_hub:
+        #     ds.push_to_hub(self.hf_dataset_name, embed_external_files=self.embed_images, token=os.environ['HF_TOKEN'])
+
+        # print(f"Successfully uploaded to the Hugging Face Hub at https://huggingface.co/datasets/{self.hf_dataset_name}")
+
+        # return ds

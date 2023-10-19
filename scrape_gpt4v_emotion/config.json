@@ -1,0 +1,8 @@
+{
+  "base_url": "https://discord.com/api/v9",
+  "channel_id": "1162094554472788029",
+  "limit": 100,
+  "max_chunk_size": 300,
+  "embed_images": false,
+  "hf_dataset_name": "ZachNagengast/test-gpt4v-emotion-dataset"
+}

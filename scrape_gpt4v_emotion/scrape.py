@@ -6,6 +6,7 @@ from scraper import ScraperBot, ScraperBotConfig, HFDatasetScheme
 
 url_pattern = re.compile(r'https?://\S+')
 
+
 def parse_fn(message: Dict[str, Any]) -> List[HFDatasetScheme]:
     """Parses a message into a list of Hugging Face Dataset Schemes.
 
@@ -58,4 +59,4 @@ if __name__ == "__main__":
     config = ScraperBotConfig.from_json(config_path)
 
     bot = ScraperBot(config=config, parse_fn=parse_fn, condition_fn=condition_fn)
-    bot.scrape(fetch_all=os.environ.get("FETCH_ALL", "false").lower() == "true")
+    bot.scrape(fetch_all=True)
