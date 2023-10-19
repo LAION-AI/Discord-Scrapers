@@ -66,15 +66,21 @@ def prepare_dataset(messages: List[HFDatasetScheme]) -> pd.DataFrame:
 
 
 # Download images
-def download_and_convert_images_for_dataframe(dataset_dict: dict) -> dict:
+def download_and_convert_images_for_dataframe(df: pd.DataFrame) -> dict:
+    # Convert the DataFrame to a dictionary
+    df_dict = df.to_dict('list')
+
+    # Initialize dataset_dict with existing data
+    dataset_dict = {key: df_dict[key][:] for key in df_dict.keys()}
+
     # Identify rows with NA in the 'image' column
-    rows_to_download = [idx for idx, image in enumerate(dataset_dict['image']) if image is None]
+    rows_to_download = [idx for idx, image in enumerate(df_dict['image']) if image is None]
     count_to_download = len(rows_to_download)
     print(f"Downloading {count_to_download} new images...")
 
     # Loop to download images
     for idx in tqdm(rows_to_download, desc="Downloading images", unit=" images"):
-        image_url = dataset_dict['link'][idx]
+        image_url = df_dict['link'][idx]
         try:
             image = PILImage.open(requests.get(image_url, stream=True).raw).convert("RGB")
             dataset_dict['image'][idx] = image  # Replace the None value
@@ -133,8 +139,6 @@ def get_image(link: str) -> bytes:
 
 fs = HfFileSystem(token=os.environ['HF_TOKEN'])
 
-schema = [f.name for f in fields(HFDatasetScheme)]
-
 
 class ScraperBot:
     def __init__(self, config: ScraperBotConfig, condition_fn: Callable, parse_fn: Callable) -> None:
@@ -158,6 +162,13 @@ class ScraperBot:
         self.hf_dataset_name = config.hf_dataset_name
         self.parse_fn = parse_fn
         self.condition_fn = condition_fn
+
+    @property
+    def schema(self):
+        schema = [f.name for f in fields(HFDatasetScheme)]
+        if not self.embed_images:
+            schema.remove("image")
+        return schema
 
     @property
     def url(self) -> str:
@@ -184,10 +195,23 @@ class ScraperBot:
 
     def _update_chunk(self, df: pd.DataFrame, chunk_num: int) -> None:
         chunks = self._get_chunk_names()
-        number_of_chunks = len(chunks)
 
-        # Save the current chunk, this uploads to hf_hub
-        with fs.open(f"{self.fs_path}/train-{chunk_num:05d}-of-{number_of_chunks + 1:05d}.parquet", "wb") as f:
+        if len(chunks) == 0:
+            selected_chunk = f"train-{0:05d}-of-{1:05d}.parquet"
+        else:
+            # find the chunk that we want to update
+            selected_chunk = None
+            for chunk in chunks:
+                key = int(chunk.split("-")[1])
+                if key == chunk_num:
+                    selected_chunk = chunk
+                    break
+
+        if selected_chunk is None:
+            selected_chunk = f"train-{chunk_num:05d}-of-{len(chunks)+1:05d}.parquet"
+
+        # Save the current chunk
+        with fs.open(f"{self.fs_path}/{selected_chunk}", "wb") as f:
             df.to_parquet(f)
 
     def _new_chunk(self, df: pd.DataFrame) -> None:
@@ -203,12 +227,12 @@ class ScraperBot:
         for chunk in chunks:
             key = int(chunk.split("-")[1])
             from_name = f"{self.repo_path}/{chunk}"
-            to_name = f"{self.repo_path}/train-{key:04d}-of-{new_chunk_count:04d}.parquet"
+            to_name = f"{self.repo_path}/train-{key:05d}-of-{new_chunk_count:05d}.parquet"
             operations.append(CommitOperationCopy(from_name, to_name))
             operations.append(CommitOperationDelete(from_name))
 
         addition = CommitOperationAdd(
-            path_in_repo=f"{self.repo_path}/train-{len(chunks):04d}-of-{new_chunk_count:04d}.parquet",
+            path_in_repo=f"{self.repo_path}/train-{len(chunks):05d}-of-{new_chunk_count:05d}.parquet",
             path_or_fileobj=df.to_parquet()
         )
         preupload_lfs_files(repo_id=self.hf_dataset_name, repo_type='dataset', token=os.environ['HF_TOKEN'],  additions=[addition])
@@ -316,7 +340,6 @@ class ScraperBot:
 
         return unique_list
 
-
     def scrape(self, fetch_all: bool=False, push_to_hub: bool=True) -> Dataset:
         schema = [f.name for f in fields(HFDatasetScheme)]
 
@@ -358,13 +381,11 @@ class ScraperBot:
         for index, row in tqdm(new_message_dataset.iterrows()):
             if len(current_dataset) >= self.config.max_chunk_size:
                 self._update_chunk(chunk, chunk_num)
-                time.sleep(5)  # Sleep for 5 seconds to avoid race conditions
                 # Save the current chunk
                 chunk = pd.DataFrame(columns=schema)
                 chunk_num += 1
                 self._new_chunk(chunk)
 
-        time.sleep(5)  # Sleep for 5 seconds to avoid race conditions
         self._update_chunk(chunk, chunk_num)
 
 
