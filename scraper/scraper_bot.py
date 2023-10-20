@@ -12,6 +12,7 @@ from typing import Callable, List, Dict, Any
 from huggingface_hub import (
     HfFileSystem,
     preupload_lfs_files,
+    upload_file,
     create_commit,
     create_repo,
     CommitOperationCopy,
