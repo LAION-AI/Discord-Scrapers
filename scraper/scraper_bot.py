@@ -177,7 +177,7 @@ class ScraperBot:
 
     @property
     def fs_path(self) -> str:
-        path = f"datasets/{self.hf_dataset_name}/data"
+        path = f"datasets/{self.hf_dataset_name}/{self.repo_path}"
         return path
 
     @property
