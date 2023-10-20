@@ -4,5 +4,5 @@
     "limit": 100,
     "max_chunk_size": 300,
     "embed_images": true,
-    "hf_dataset_name": "ZachNagengast/test-wuerstchen-dataset"
+    "hf_dataset_name": "laion/wuerstchen-dataset"
 }
