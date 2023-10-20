@@ -5,23 +5,33 @@ import json
 import math
 import pandas as pd
 import numpy as np
+from enum import Enum
 from tqdm import tqdm
 from dataclasses import dataclass
 from typing import Callable, List, Dict, Any
-from huggingface_hub import HfFileSystem, preupload_lfs_files, create_commit, CommitOperationCopy, CommitOperationDelete, CommitOperationAdd
+from huggingface_hub import (
+    HfFileSystem,
+    preupload_lfs_files,
+    create_commit,
+    create_repo,
+    CommitOperationCopy,
+    CommitOperationDelete,
+    CommitOperationAdd,
+)
 
 import requests
 from PIL import Image as PILImage
-from datasets import Dataset, Image
+from datasets import Dataset, Image, load_dataset
 from dataclasses import fields
+
 
 # Load environment variables from .env file if they exist
 # Mainly used for local development, github actions will set these variables on its own.
-if os.path.exists('.env'):
-    with open('.env') as f:
+if os.path.exists(".env"):
+    with open(".env") as f:
         for line in f:
             if line.strip():
-                key, value = line.strip().split('=', 1)
+                key, value = line.strip().split("=", 1)
                 if value:
                     print(f"Setting {key} from .env file")
                     os.environ[key] = value
@@ -32,6 +42,7 @@ else:
 @dataclass
 class ScraperBotConfig:
     """Bot configuration that changes how the bot behaves"""
+
     base_url: str
     channel_id: str
     limit: int
@@ -41,7 +52,7 @@ class ScraperBotConfig:
 
     @classmethod
     def from_json(cls, json_path: str):
-        with open(json_path, 'r') as f:
+        with open(json_path, "r") as f:
             config_dict = json.load(f)
             return cls(**config_dict)
 
@@ -55,61 +66,49 @@ class HFDatasetScheme:
     timestamp: str
 
 
+class AppendMode(Enum):
+    LATEST = "latest"
+    NEW = "new"
+
+
 def prepare_dataset(messages: List[HFDatasetScheme]) -> pd.DataFrame:
-    return pd.DataFrame({
+    return pd.DataFrame(
+        {
             "caption": [msg.caption for msg in messages],
-            "image": [None for msg in messages],  # Initialize to None, will be filled in later
-            "link": [msg.link for msg in messages],  # will maintain just because we use it to filter
+            "image": [
+                None for msg in messages
+            ],  # Initialize to None, will be filled in later
+            "link": [
+                msg.link for msg in messages
+            ],  # will maintain just because we use it to filter
             "message_id": [msg.message_id for msg in messages],
-            "timestamp": [msg.timestamp for msg in messages]
-    })
-
-
-# Download images
-def download_and_convert_images_for_dataframe(df: pd.DataFrame) -> dict:
-    # Convert the DataFrame to a dictionary
-    df_dict = df.to_dict('list')
-
-    # Initialize dataset_dict with existing data
-    dataset_dict = {key: df_dict[key][:] for key in df_dict.keys()}
-
-    # Identify rows with NA in the 'image' column
-    rows_to_download = [idx for idx, image in enumerate(df_dict['image']) if image is None]
-    count_to_download = len(rows_to_download)
-    print(f"Downloading {count_to_download} new images...")
-
-    # Loop to download images
-    for idx in tqdm(rows_to_download, desc="Downloading images", unit=" images"):
-        image_url = df_dict['link'][idx]
-        try:
-            image = PILImage.open(requests.get(image_url, stream=True).raw).convert("RGB")
-            dataset_dict['image'][idx] = image  # Replace the None value
-        except Exception as e:
-            print(f"Error downloading image at {image_url}: {e}")
-
-    return dataset_dict
+            "timestamp": [msg.timestamp for msg in messages],
+        }
+    )
 
 
 def merge_datasets(old_df: pd.DataFrame, new_df: pd.DataFrame) -> pd.DataFrame:
     # Gather existing URLs from old_df using indices if it exists
-    existing_image_urls = old_df['link'].tolist() if old_df is not None else []
+    existing_image_urls = old_df["link"].tolist() if old_df is not None else []
 
     print(f"Current rows: {len(existing_image_urls)}")
 
     # Filter new_df to only include rows that aren't in old_df
-    filtered_new_df = new_df.loc[~new_df['link'].isin(existing_image_urls)]
+    filtered_new_df = new_df.loc[~new_df["link"].isin(existing_image_urls)]
 
     print(f"Rows to add: {filtered_new_df.shape[0]}")
 
     # Concatenate the old and filtered new dataframes
-    merged_df = pd.concat([old_df, filtered_new_df]) if old_df is not None else filtered_new_df
+    merged_df = (
+        pd.concat([old_df, filtered_new_df]) if old_df is not None else filtered_new_df
+    )
 
     return merged_df
 
 
 def get_latest_message_id(df: pd.DataFrame) -> str:
     try:
-        max_message = df['message_id'].astype(np.int64).max()
+        max_message = df["message_id"].astype(np.int64).max()
         if math.isnan(max_message):
             return None
         return str(max_message)
@@ -119,29 +118,24 @@ def get_latest_message_id(df: pd.DataFrame) -> str:
 
 
 def get_bot_headers() -> Dict[str, str]:
-    return {
-        "Authorization": f"Bot {os.environ['DISCORD_TOKEN']}"
-    }
+    return {"Authorization": f"Bot {os.environ['DISCORD_TOKEN']}"}
 
 
 def get_user_headers() -> Dict[str, str]:
-    return {
-        'authorization': os.environ['DISCORD_TOKEN']
-    }
+    return {"authorization": os.environ["DISCORD_TOKEN"]}
 
 
 def get_image(link: str) -> bytes:
     image = PILImage.open(requests.get(link, stream=True).raw).convert("RGB")
     img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format='PNG')
-    return {'bytes': img_byte_arr.getvalue(), 'path': None}
-
-
-fs = HfFileSystem(token=os.environ['HF_TOKEN'])
+    image.save(img_byte_arr, format="PNG")
+    return {"bytes": img_byte_arr.getvalue(), "path": None}
 
 
 class ScraperBot:
-    def __init__(self, config: ScraperBotConfig, condition_fn: Callable, parse_fn: Callable) -> None:
+    def __init__(
+        self, config: ScraperBotConfig, condition_fn: Callable, parse_fn: Callable
+    ) -> None:
         """A bot that scrapes messages from a Discord channel and uploads them to the Hugging Face Hub.
 
         Parameters
@@ -172,116 +166,235 @@ class ScraperBot:
 
     @property
     def url(self) -> str:
-        return f'{self.base_url}/channels/{self.channel_id}/messages?limit={self.limit}'
+        return f"{self.base_url}/channels/{self.channel_id}/messages?limit={self.limit}"
 
     @property
     def headers(self) -> Dict[str, str]:
-        if os.environ['IS_CI'] in 'true':
+        if os.environ["IS_CI"] in "true":
             return get_bot_headers()
         else:
             return get_user_headers()
 
     @property
     def fs_path(self) -> str:
-        return f"datasets/{self.hf_dataset_name}/data"
+        path = f"datasets/{self.hf_dataset_name}/data"
+        return path
 
     @property
     def repo_path(self) -> str:
         return "data"
 
+    def _create_repo(self) -> None:
+        print(f"Repo did not exist, creating new repo {self.hf_dataset_name}")
+        create_repo(
+            self.hf_dataset_name,
+            repo_type="dataset",
+            token=os.environ["HF_TOKEN"],
+            exist_ok=True,
+        )
+        self._update_readme()
+
+    def _update_readme(self) -> None:
+        readme_template = f"dataset_readme_template.md"
+        addition = CommitOperationAdd(
+            path_in_repo=f"README.md",
+            path_or_fileobj=os.path.join(os.path.dirname(__file__), readme_template),
+        )
+        preupload_lfs_files(
+            repo_id=self.hf_dataset_name,
+            repo_type="dataset",
+            token=os.environ["HF_TOKEN"],
+            additions=[addition],
+        )
+
+        create_commit(
+            repo_id=self.hf_dataset_name,
+            repo_type="dataset",
+            commit_message="Update README.md",
+            token=os.environ["HF_TOKEN"],
+            operations=[addition],
+        )
+
     def _get_chunk_names(self) -> None:
+        fs = HfFileSystem(token=os.environ["HF_TOKEN"], skip_instance_cache=True)
         chunks = fs.glob(f"{self.fs_path}/**.parquet")
-        return [chunk.replace(f"{self.fs_path}/", '') for chunk in chunks]
+        return [chunk.replace(f"{self.fs_path}/", "") for chunk in chunks]
 
-    def _update_chunk(self, df: pd.DataFrame, chunk_num: int) -> None:
+    def _get_detailed_chunk_names(self) -> None:
+        fs = HfFileSystem(token=os.environ["HF_TOKEN"], skip_instance_cache=True)
+        detailed_chunks = fs.ls(f"{self.fs_path}/", detail=True)
+        return detailed_chunks
+
+    def _append_chunk(
+        self, df: pd.DataFrame, mode: AppendMode = AppendMode.LATEST
+    ) -> None:
+        fs = HfFileSystem(token=os.environ["HF_TOKEN"], skip_instance_cache=True)
         chunks = self._get_chunk_names()
+        print(f"Appending to {len(chunks)} existing chunks with mode {mode}")
 
-        if len(chunks) == 0:
-            selected_chunk = f"train-{0:05d}-of-{1:05d}.parquet"
+        if mode == AppendMode.NEW or not chunks:
+            total = len(chunks) + 1
+            key = len(chunks)
+            selected_chunk = f"train-{key:05d}-of-{total:05d}"
+            print(f"Creating new chunk: {selected_chunk}")
         else:
-            # find the chunk that we want to update
-            selected_chunk = None
-            for chunk in chunks:
-                key = int(chunk.split("-")[1])
-                if key == chunk_num:
-                    selected_chunk = chunk
-                    break
+            most_recent_chunk = max(chunks, key=lambda x: int(x.split("-")[1]))
+            key, total = [int(x) for x in most_recent_chunk.split("-")[1:4:2]]
+            selected_chunk = f"train-{key:05d}-of-{total:05d}"
+            print(f"Updating existing chunk: {selected_chunk}")
 
-        if selected_chunk is None:
-            selected_chunk = f"train-{chunk_num:05d}-of-{len(chunks)+1:05d}.parquet"
+        # Prepare and upload the DataFrame
+        needs_upload = True
+        while needs_upload:
+            ds = Dataset.from_pandas(df)
+            ds.cast_column("image", Image(decode=True))
+            file_name = f"{self.fs_path}/{selected_chunk}-{ds._fingerprint}.parquet"
+            print(f"Saving chunk {file_name} with {df.shape[0]} rows")
+            try:
+                with fs.open(file_name, "wb") as f:
+                    ds.to_parquet(f)
+                needs_upload = False
+            except Exception as e:
+                print(f"Upload failed {e}, retrying...")
+                time.sleep(5)
 
-        # Save the current chunk
-        with fs.open(f"{self.fs_path}/{selected_chunk}", "wb") as f:
-            df.to_parquet(f)
-
-    def _new_chunk(self, df: pd.DataFrame) -> None:
+    def _rename_chunks(self):
         # Rename all chunks to be of one number higher
-        chunks = self._get_chunk_names()
+        chunks = self._get_detailed_chunk_names()
+        print(f"RENAMING CHUNKS: {chunks}")
         # re https://github.com/huggingface/huggingface_hub/issues/1733#issuecomment-1761942073,
         # a commit should not have more than 100 operations (so not more than 50 files should be renamed at once).
         # The issue is being timed out. testing shows that it should be fine for many rename operations.
         # hf_hub only has CommitOperationCopy and CommitOperationDelete,
         # but we can combine them into a CommitOperationRename
-        new_chunk_count = len(chunks) + 1
         operations = []
+        fingerprints = []
+
+        # First pass to identify and delete smaller duplicates
+        processed_base_names = set()
         for chunk in chunks:
-            key = int(chunk.split("-")[1])
-            from_name = f"{self.repo_path}/{chunk}"
-            to_name = f"{self.repo_path}/train-{key:05d}-of-{new_chunk_count:05d}.parquet"
+            name = chunk.get("name").replace(f"{self.fs_path}/", "")
+            key = int(name.split("-")[1])
+            base_name = f"train-{key:05d}"
+
+            if base_name in processed_base_names:
+                continue
+
+            duplicate_chunks = [
+                other_chunk
+                for other_chunk in chunks
+                if other_chunk.get("name")
+                .replace(f"{self.fs_path}/", "")
+                .startswith(base_name)
+            ]
+
+            if len(duplicate_chunks) > 1:
+                print(f"Found duplicate chunks with base name {base_name}")
+                smallest_chunk = min(duplicate_chunks, key=lambda x: x.get("size"))
+                print(
+                    f"Deleting smaller chunk {smallest_chunk.get('name').replace(f'{self.fs_path}/', '')}"
+                )
+                operations.append(
+                    CommitOperationDelete(
+                        f"{self.repo_path}/{smallest_chunk.get('name').replace(f'{self.fs_path}/', '')}"
+                    )
+                )
+
+                # Remove the smallest chunk from the chunks list and mark the base_name as processed
+                chunks.remove(smallest_chunk)
+                processed_base_names.add(base_name)
+
+        new_chunk_count = len(chunks)
+
+        # Second pass to rename chunks
+        for chunk in chunks:
+            name = chunk.get("name").replace(f"{self.fs_path}/", "")
+            key = int(name.split("-")[1])
+            fingerprint = name.split(".")[0].split("-")[-1]
+            from_name = f"{self.repo_path}/{name}"
+            to_name = f"{self.repo_path}/train-{key:05d}-of-{new_chunk_count:05d}-{fingerprint}.parquet"
+
+            if from_name == to_name:
+                print(
+                    f"Skipping chunk {from_name} because it is already named correctly"
+                )
+                continue
+
+            if fingerprint in fingerprints:
+                raise ValueError(
+                    f"Duplicate fingerprint {fingerprint} found, something is wrong"
+                )
+
+            fingerprints.append(fingerprint)
+            print(f"Renaming chunk {from_name} to {to_name}")
             operations.append(CommitOperationCopy(from_name, to_name))
             operations.append(CommitOperationDelete(from_name))
 
-        addition = CommitOperationAdd(
-            path_in_repo=f"{self.repo_path}/train-{len(chunks):05d}-of-{new_chunk_count:05d}.parquet",
-            path_or_fileobj=df.to_parquet()
-        )
-        preupload_lfs_files(repo_id=self.hf_dataset_name, repo_type='dataset', token=os.environ['HF_TOKEN'],  additions=[addition])
-        operations.append(addition)
-
         create_commit(
             repo_id=self.hf_dataset_name,
-            repo_type='dataset',
+            repo_type="dataset",
             commit_message="Rename chunks",
-            token=os.environ['HF_TOKEN'],
+            token=os.environ["HF_TOKEN"],
             operations=operations,
         )
-        # split into multiple commits. We can't split the copy and delete operations into separate commits
 
-    def _load_dataset(self) -> (Dataset, int):
+    def _load_dataset(self, schema: dict) -> (Dataset, int):
         chunks = self._get_chunk_names()
         if len(chunks) == 0:
+            # Initialize the dataset if empty or non-existent
+            self._create_repo()
             return (None, 0)
-        # sort in descending order. The naming scheme is  train-<x>-of-<y>-<hash>.parquet
-        chunks.sort(key=lambda x: int(x.split("-")[1]), reverse=True)
-        df = pd.read_parquet(fs.open(f"{self.fs_path}/{chunks[0]}", "rb"))
-        chunk_num = int(chunks[0].split("-")[1])
 
-        # This is a temporary fix for the transition period between the old and new saving schemes
-        # Search all chunks for the max message id
-        # TODO: Remove this once we are sure that all datasets have a new chunk - that guarantees that the latest message id is in the last chunk
-        latest_message_id = '0'
-        for chunk in chunks:
-            _df = pd.read_parquet(fs.open(f"{self.fs_path}/{chunk}", "rb"))
-            _latest_message_id = get_latest_message_id(df)
-            if _latest_message_id and _latest_message_id > latest_message_id:
-                latest_message_id = _latest_message_id
-                df = _df
-                chunk_num = int(chunk.split("-")[1])
+        # sort in descending order.
+        # The naming scheme is  train-<x>-of-<y>-<hash>.parquet
+        chunks.sort(key=lambda x: int(x.split("-")[1]), reverse=True)
+        chunk_num = len(chunks)  # y in the naming scheme
+        print(f"Found {len(chunks)} chunks: {chunks}")
+
+        print(f"Loading and converting to Hugging Face Dataset...")
+        ds = load_dataset(
+            self.hf_dataset_name, columns=schema, split="train", streaming=True
+        )
+        df = pd.DataFrame(ds)
 
         return (df, chunk_num)
 
-    def filter_messages(self, messages: List[HFDatasetScheme]) -> List[HFDatasetScheme]:
+    def filter_messages(
+        self, dataset: pd.DataFrame, messages: List[HFDatasetScheme]
+    ) -> List[HFDatasetScheme]:
+        fs = HfFileSystem(token=os.environ["HF_TOKEN"], skip_instance_cache=True)
+
         # Iterate over the whole dataset and remove all messages that are already in the dataset
         chunks = self._get_chunk_names()
         if len(chunks) == 0:
             return messages
 
-        for chunk in tqdm(chunks, desc="Filtering messages", unit=" chunks"):
-            df = pd.read_parquet(fs.open(f"{self.fs_path}/{chunk}", "rb"))
-            existing_message_ids = df['message_id'].tolist()
-            messages = [msg for msg in messages if msg.message_id not in existing_message_ids]
+        existing_message_ids = dataset["message_id"].tolist()
+        messages = [
+            msg for msg in messages if msg.message_id not in existing_message_ids
+        ]
 
         return messages
+
+    def _get_current_chunk(self) -> pd.DataFrame:
+        fs = HfFileSystem(token=os.environ["HF_TOKEN"], skip_instance_cache=True)
+
+        # Iterate over the whole dataset and remove all messages that are already in the dataset
+        chunks = self._get_chunk_names()
+
+        current_chunk = pd.DataFrame(columns=self.schema)
+        if len(chunks) == 0:
+            return current_chunk
+
+        # Find and load current chunk
+        chunks.sort(key=lambda x: int(x.split("-")[1]), reverse=True)
+        latest_chunk_name = chunks.pop(0)
+        latest_chunk = pd.read_parquet(
+            fs.open(f"{self.fs_path}/{latest_chunk_name}", "rb")
+        )
+        print(f"Latest chunk {latest_chunk_name} has {latest_chunk.shape[0]} rows")
+
+        return latest_chunk
 
     def _get_messages(self, after_message_id: str) -> List[HFDatasetScheme]:
         all_messages = []
@@ -289,35 +402,39 @@ class ScraperBot:
 
         progress = tqdm(desc="Fetching messages", unit=" messages")
         total_messages = 0
-        
+
         while True:
             url = self.url
             if before_message_id:
-                url += f'&before={before_message_id}'
+                url += f"&before={before_message_id}"
             if after_message_id:
-                url += f'&after={after_message_id}'
+                url += f"&after={after_message_id}"
 
             response = requests.get(url, headers=self.headers)
 
             if response.status_code == 200:
                 messages = response.json()
                 total_messages += len(messages)
-                
+
                 if not messages:
                     break
 
-                parsed_messages = [self.parse_fn(msg) for msg in messages if self.condition_fn(msg)]
-                parsed_messages = [msg for msg_list in parsed_messages for msg in msg_list]
+                parsed_messages = [
+                    self.parse_fn(msg) for msg in messages if self.condition_fn(msg)
+                ]
+                parsed_messages = [
+                    msg for msg_list in parsed_messages for msg in msg_list
+                ]
 
                 all_messages.extend(parsed_messages)
 
                 # Update tqdm progress bar
                 progress.update(len(messages))
-                
-                if messages[-1]['id'] == before_message_id:
+
+                if messages[-1]["id"] == before_message_id:
                     break
 
-                before_message_id = messages[-1]['id']
+                before_message_id = messages[-1]["id"]
             elif response.status_code == 429:
                 print("Rate limited. Sleeping for 5 seconds...")
                 time.sleep(5)
@@ -336,83 +453,102 @@ class ScraperBot:
                 unique_list.append(obj)
 
         unique_list.sort(key=lambda x: x.message_id)
-        print(f"Found {len(unique_list)} valid samples out of {total_messages} messages.")
+        print(
+            f"Found {len(unique_list)} valid samples out of {total_messages} messages."
+        )
+        print(f"Oldest: {unique_list[0].timestamp}")
+        print(f"Newest: {unique_list[-1].timestamp}")
 
         return unique_list
 
-    def scrape(self, fetch_all: bool=False, push_to_hub: bool=True) -> Dataset:
+    def scrape(self, fetch_all: bool = False) -> None:
         schema = [f.name for f in fields(HFDatasetScheme)]
 
         # Drop images if we're not embedding them
         if not self.embed_images:
             schema.remove("image")
 
-        print(f"Beginning scrape for {self.hf_dataset_name} with schema {schema}")
+        print(
+            f"Beginning scrape for {self.hf_dataset_name} with schema {schema} and fetch_all={fetch_all}"
+        )
 
         # Load the current dataset without images initially, to figure out what we're working with
-        current_dataset, chunk_count = self._load_dataset(with_images=False) #TODO: be able to return (None, 0) here
-        after_message_id = get_latest_message_id(current_dataset) if not fetch_all else None # TODO: inside here return none if dataset is empty
+        current_dataset, chunk_count = self._load_dataset(schema=schema)
+        after_message_id = (
+            get_latest_message_id(current_dataset) if not fetch_all else None
+        )  # TODO: inside here return none if dataset is empty
 
-        print(f"Current dataset has {current_dataset.shape[0] if current_dataset is not None else 0} rows and {chunk_count} chunks.")
+        print(
+            f"Current dataset has {current_dataset.shape[0] if current_dataset is not None else 0} rows and {chunk_count} chunks."
+        )
         print(f"Last message ID: {after_message_id}.")
+        fetch_all = True
+        messages = self._get_messages(
+            after_message_id=after_message_id if not fetch_all else None
+        )
 
-        messages = self._get_messages(after_message_id=after_message_id) # TODO: handle none here
+        # Filter messages
+        filtered_messages = self.filter_messages(current_dataset, messages)
 
-        # Early return if no messages
-        if not len(messages):
+        # Early return if no new messages
+        if not len(filtered_messages):
             print("No new messages found.")
             return
-        
-        # Filter messages
-        filtered_messages = self.filter_messages(messages) # TODO figure out why this is needed -> `if fetch_all else messages`
-        new_message_dataset = prepare_dataset(messages) # TODO: this will always have data
 
-        print(f"New dataset has {len(new_message_dataset['link'])} rows and schema: {new_message_dataset.keys()}")
+        new_message_dataset = prepare_dataset(filtered_messages)
 
-        if self.embed_images:
-            print(f"Downloading and converting images...")
-            # TODO 
-            new_message_dataset = download_and_convert_images_for_dataframe(new_message_dataset)
+        print(
+            f"New dataset has {len(new_message_dataset['link'])} rows and {len(new_message_dataset['link']) // self.config.max_chunk_size + 1} chunks."
+        )
+        print(f"Schema: {schema}")
 
+        total_rows = len(new_message_dataset)
+        current_chunk = self._get_current_chunk()
+        schema = current_chunk.columns
 
-        # TODO: Find chunk needed from current_dataset
-        # TODO: Merge with message_dataset, creating new chunks as needed
+        print(f"Initial current_chunk size: {len(current_chunk)}")
 
-        for index, row in tqdm(new_message_dataset.iterrows()):
-            if len(current_dataset) >= self.config.max_chunk_size:
-                self._update_chunk(chunk, chunk_num)
-                # Save the current chunk
-                chunk = pd.DataFrame(columns=schema)
-                chunk_num += 1
-                self._new_chunk(chunk)
+        if current_chunk.shape[0] >= self.config.max_chunk_size:
+            # If the current chunk is full, create a new one
+            print(f"Current chunk is full, starting new chunk...")
+            current_chunk = pd.DataFrame(columns=schema)
+            self._append_chunk(current_chunk, mode=AppendMode.NEW)
+            self._rename_chunks()
 
-        self._update_chunk(chunk, chunk_num)
+            print(f"Current current_chunk size is now: {len(current_chunk)}")
 
+        for index, row in tqdm(
+            new_message_dataset.iterrows(),
+            desc="Uploading to hf hub",
+            unit=" rows",
+            total=total_rows,
+        ):
+            # Add the image and append the row to the row_buffer
+            try:
+                if self.embed_images:
+                    row["image"] = get_image(row["link"])
+                current_chunk = pd.concat(
+                    [current_chunk, pd.DataFrame([row])], ignore_index=True
+                )
+            except Exception as e:
+                print(f"Error downloading image at {row['link']}: {e}")
 
-        # if self.embed_images:
-        #     print(f"Downloading and converting images...")
-        #     dataset_dict = download_and_convert_images_for_dataframe(dataset_dict)
+            if current_chunk.shape[0] >= self.config.max_chunk_size:
+                # If the current chunk is full, create a new one
+                print(f"Current chunk is full, saving and starting new chunk...")
+                print("Appending to latest chunk...")
+                self._append_chunk(current_chunk, mode=AppendMode.LATEST)
+                self._rename_chunks()
+                print("Staring new chunk...")
+                current_chunk = pd.DataFrame(columns=schema)
+                current_chunk.reset_index(drop=True, inplace=True)
+                self._append_chunk(current_chunk, mode=AppendMode.NEW)
+                self._rename_chunks()
 
-        #     # Convert to Hugging Face Dataset
-        #     print(f"Converting to Hugging Face Dataset...")    
-        #     ds = Dataset.from_dict(dataset_dict)
+        # Loop finished, check if there is any data left in the current_chunk
+        if len(current_chunk) > 0:
+            print(f"Current chunk has {len(current_chunk)} rows left, saving...")
+            self._append_chunk(current_chunk, mode=AppendMode.LATEST)
+            self._rename_chunks()
 
-
-        # else:
-        #     # Convert to Hugging Face Dataset
-        #     print(f"Converting to Hugging Face Dataset...")    
-        #     ds = Dataset.from_dict(dataset_dict)
-            
-        #     print("Dropping images...")
-        #     ds = ds.remove_columns(["image"])      
-
-        # # Push to the Hugging Face Hub
-        # print(f"Pushing dataset to the Hugging Face Hub...")
-        # print(ds)
-
-        # if push_to_hub:
-        #     ds.push_to_hub(self.hf_dataset_name, embed_external_files=self.embed_images, token=os.environ['HF_TOKEN'])
-
-        # print(f"Successfully uploaded to the Hugging Face Hub at https://huggingface.co/datasets/{self.hf_dataset_name}")
-
-        # return ds
+        print("Done!")

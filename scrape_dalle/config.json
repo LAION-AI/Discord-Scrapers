@@ -4,9 +4,5 @@
     "limit": 100,
     "max_chunk_size": 300,
     "embed_images": true,
-<<<<<<< HEAD
-    "hf_dataset_name": "ZachNagengast/test-dalle-3-dataset"
-=======
     "hf_dataset_name": "laion/dalle-3-dataset"
->>>>>>> f40edae59bf1748c8c2fbfc1397c0057840a5260
 }
