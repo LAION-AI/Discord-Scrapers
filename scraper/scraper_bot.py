@@ -473,7 +473,8 @@ class ScraperBot:
         )
 
         # Load the current dataset without images initially, to figure out what we're working with
-        schema.remove("image")
+        if "image" in schema:
+            schema.remove("image")
         current_dataset, chunk_count = self._load_dataset(schema=schema)
         after_message_id = (
             get_latest_message_id(current_dataset) if not fetch_all else None
