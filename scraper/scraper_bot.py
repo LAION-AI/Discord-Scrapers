@@ -362,7 +362,6 @@ class ScraperBot:
     def filter_messages(
         self, dataset: pd.DataFrame, messages: List[HFDatasetScheme]
     ) -> List[HFDatasetScheme]:
-        fs = HfFileSystem(token=os.environ["HF_TOKEN"], skip_instance_cache=True)
 
         # Iterate over the whole dataset and remove all messages that are already in the dataset
         chunks = self._get_chunk_names()
