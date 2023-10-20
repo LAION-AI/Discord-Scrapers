@@ -1,3 +1,5 @@
 requests==2.31.0
-datasets==2.14.5
+git+https://github.com/huggingface/datasets.git@a6bd7b4a268dbda6b86d4ca59f5d2a78848b0199
 Pillow==10.0.1
+huggingface_hub>=0.18
+numpy
