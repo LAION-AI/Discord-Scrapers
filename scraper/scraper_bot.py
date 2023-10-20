@@ -249,7 +249,6 @@ class ScraperBot:
     def _rename_chunks(self):
         # Rename all chunks to be of one number higher
         chunks = self._get_detailed_chunk_names()
-        print(f"RENAMING CHUNKS: {chunks}")
         # re https://github.com/huggingface/huggingface_hub/issues/1733#issuecomment-1761942073,
         # a commit should not have more than 100 operations (so not more than 50 files should be renamed at once).
         # The issue is being timed out. testing shows that it should be fine for many rename operations.
@@ -298,9 +297,19 @@ class ScraperBot:
         for chunk in chunks:
             name = chunk.get("name").replace(f"{self.fs_path}/", "")
             key = int(name.split("-")[1])
-            fingerprint = name.split(".")[0].split("-")[-1]
+            
+            split_name = name.split(".")[0].split("-")
+            if len(split_name) == 5:
+                fingerprint = split_name[-1]
+            else:
+                fingerprint = None
+
             from_name = f"{self.repo_path}/{name}"
-            to_name = f"{self.repo_path}/train-{key:05d}-of-{new_chunk_count:05d}-{fingerprint}.parquet"
+            
+            if fingerprint:
+                to_name = f"{self.repo_path}/train-{key:05d}-of-{new_chunk_count:05d}-{fingerprint}.parquet"
+            else:
+                to_name = f"{self.repo_path}/train-{key:05d}-of-{new_chunk_count:05d}.parquet"
 
             if from_name == to_name:
                 print(
@@ -308,13 +317,16 @@ class ScraperBot:
                 )
                 continue
 
-            if fingerprint in fingerprints:
+            print(f"Renaming chunk {from_name} to {to_name}")
+
+            if fingerprint and fingerprint in fingerprints:
                 raise ValueError(
                     f"Duplicate fingerprint {fingerprint} found, something is wrong"
                 )
+            
+            if fingerprint:
+                fingerprints.append(fingerprint)
 
-            fingerprints.append(fingerprint)
-            print(f"Renaming chunk {from_name} to {to_name}")
             operations.append(CommitOperationCopy(from_name, to_name))
             operations.append(CommitOperationDelete(from_name))
 
@@ -460,6 +472,7 @@ class ScraperBot:
         )
 
         # Load the current dataset without images initially, to figure out what we're working with
+        schema.remove("image")
         current_dataset, chunk_count = self._load_dataset(schema=schema)
         after_message_id = (
             get_latest_message_id(current_dataset) if not fetch_all else None
@@ -485,9 +498,10 @@ class ScraperBot:
         new_message_dataset = prepare_dataset(filtered_messages)
 
         print(
-            f"New dataset has {len(new_message_dataset['link'])} rows and {len(new_message_dataset['link']) // self.config.max_chunk_size + 1} chunks."
+            f"New data has {len(new_message_dataset['link'])} rows and {len(new_message_dataset['link']) // self.config.max_chunk_size + 1} chunks."
         )
-        print(f"Schema: {schema}")
+        print(f"New + Current dataset will have {len(new_message_dataset) + len(current_dataset) if current_dataset is not None else len(new_message_dataset)} rows.")
+        print(f"Schema: {self.schema}")
 
         total_rows = len(new_message_dataset)
         current_chunk = self._get_current_chunk()
@@ -498,7 +512,7 @@ class ScraperBot:
         if current_chunk.shape[0] >= self.config.max_chunk_size:
             # If the current chunk is full, create a new one
             print(f"Current chunk is full, starting new chunk...")
-            current_chunk = pd.DataFrame(columns=schema)
+            current_chunk = pd.DataFrame(columns=self.schema)
             self._append_chunk(current_chunk, mode=AppendMode.NEW)
             self._rename_chunks()
 
