@@ -195,24 +195,12 @@ class ScraperBot:
         self._update_readme()
 
     def _update_readme(self) -> None:
-        readme_template = f"dataset_readme_template.md"
-        addition = CommitOperationAdd(
-            path_in_repo=f"README.md",
-            path_or_fileobj=os.path.join(os.path.dirname(__file__), readme_template),
-        )
-        preupload_lfs_files(
+        upload_file(
+            path_or_fileobj=os.path.join(os.path.dirname(__file__), "dataset_readme_template.md"),
+            path_in_repo="README.md",
             repo_id=self.hf_dataset_name,
-            repo_type="dataset",
             token=os.environ["HF_TOKEN"],
-            additions=[addition],
-        )
-
-        create_commit(
-            repo_id=self.hf_dataset_name,
             repo_type="dataset",
-            commit_message="Update README.md",
-            token=os.environ["HF_TOKEN"],
-            operations=[addition],
         )
 
     def _get_chunk_names(self) -> None:
