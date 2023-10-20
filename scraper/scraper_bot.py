@@ -476,7 +476,7 @@ class ScraperBot:
         current_dataset, chunk_count = self._load_dataset(schema=schema)
         after_message_id = (
             get_latest_message_id(current_dataset) if not fetch_all else None
-        )  # TODO: inside here return none if dataset is empty
+        ) 
 
         print(
             f"Current dataset has {current_dataset.shape[0] if current_dataset is not None else 0} rows and {chunk_count} chunks."
@@ -539,7 +539,7 @@ class ScraperBot:
                 print("Appending to latest chunk...")
                 self._append_chunk(current_chunk, mode=AppendMode.LATEST)
                 self._rename_chunks()
-                print("Staring new chunk...")
+                print("Starting new chunk...")
                 current_chunk = pd.DataFrame(columns=schema)
                 current_chunk.reset_index(drop=True, inplace=True)
                 self._append_chunk(current_chunk, mode=AppendMode.NEW)
