@@ -535,7 +535,7 @@ class ScraperBot:
 
             if current_chunk.shape[0] >= self.config.max_chunk_size:
                 # If the current chunk is full, create a new one
-                print(f"Current chunk is full, saving and starting new chunk...")
+                print("Current chunk is full, saving and starting new chunk...")
                 print("Appending to latest chunk...")
                 self._append_chunk(current_chunk, mode=AppendMode.LATEST)
                 self._rename_chunks()
