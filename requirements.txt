@@ -3,3 +3,4 @@ git+https://github.com/ZachNagengast/datasets.git@a6bd7b4a268dbda6b86d4ca59f5d2a
 Pillow==10.0.1
 huggingface_hub>=0.18
 numpy
+fsspec==2023.9.2
