@@ -22,9 +22,10 @@ from huggingface_hub import (
 
 import requests
 from PIL import Image as PILImage
-from datasets import Dataset, Image, load_dataset
+from datasets import Dataset, Image, load_dataset, disable_caching
 from dataclasses import fields
 
+disable_caching()
 
 # Load environment variables from .env file if they exist
 # Mainly used for local development, github actions will set these variables on its own.
