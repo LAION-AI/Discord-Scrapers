@@ -214,6 +214,7 @@ class ScraperBot:
             path_or_fileobj=str(dataset_card).encode(),
             path_in_repo="README.md",
             repo_id=self.hf_dataset_name,
+            token=os.environ["HF_TOKEN"],
             repo_type="dataset",
             commit_message="Update README.md with new dataset info",
         )
