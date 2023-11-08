@@ -296,7 +296,7 @@ class ScraperBot:
             ]
 
             if len(duplicate_chunks) > 1:
-                print(f"Found duplicate chunks with base name {base_name}")
+                print(f"Found {len(duplicate_chunks)} duplicate chunks with base name {base_name}")
                 smallest_chunk = min(duplicate_chunks, key=lambda x: x.get("size"))
                 print(
                     f"Deleting smaller chunk {smallest_chunk.get('name').replace(f'{self.fs_path}/', '')}"
