@@ -249,6 +249,7 @@ class ScraperBot:
         # Prepare and upload the DataFrame
         needs_upload = True
         while needs_upload:
+            df = df.reset_index(drop=True) # drop index before converting to dataset
             ds = Dataset.from_pandas(df)
             ds = ds.cast_column("image", Image(decode=True))
             file_name = f"{self.fs_path}/{selected_chunk}-{ds._fingerprint}.parquet"
