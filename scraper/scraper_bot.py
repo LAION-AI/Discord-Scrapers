@@ -11,18 +11,17 @@ from dataclasses import dataclass
 from typing import Callable, List, Dict, Any
 from huggingface_hub import (
     HfFileSystem,
-    preupload_lfs_files,
     upload_file,
     create_commit,
     create_repo,
     CommitOperationCopy,
     CommitOperationDelete,
-    CommitOperationAdd,
+    DatasetCard,
 )
 
 import requests
 from PIL import Image as PILImage
-from datasets import Dataset, Image, load_dataset, disable_caching
+from datasets import Dataset, Image, load_dataset, disable_caching, info
 from dataclasses import fields
 
 disable_caching()
@@ -194,15 +193,29 @@ class ScraperBot:
             token=os.environ["HF_TOKEN"],
             exist_ok=True,
         )
-        self._update_readme()
+        self._create_readme()
 
-    def _update_readme(self) -> None:
+    def _create_readme(self) -> None:
         upload_file(
             path_or_fileobj=os.path.join(os.path.dirname(__file__), "dataset_readme_template.md"),
             path_in_repo="README.md",
             repo_id=self.hf_dataset_name,
             token=os.environ["HF_TOKEN"],
             repo_type="dataset",
+        )
+    
+    def _update_readme(self, dataset_info) -> None:
+        dataset_card = DatasetCard.load(self.hf_dataset_name)
+        dataset_card_data = dataset_card.data
+        info.DatasetInfosDict({'default': dataset_info}).to_dataset_card_data(dataset_card_data)
+        dataset_card.data = dataset_card_data
+
+        upload_file(
+            path_or_fileobj=str(dataset_card).encode(),
+            path_in_repo="README.md",
+            repo_id=self.hf_dataset_name,
+            repo_type="dataset",
+            commit_message="Update README.md with new dataset info",
         )
 
     def _get_chunk_names(self) -> None:
@@ -237,7 +250,7 @@ class ScraperBot:
         needs_upload = True
         while needs_upload:
             ds = Dataset.from_pandas(df)
-            ds.cast_column("image", Image(decode=True))
+            ds = ds.cast_column("image", Image(decode=True))
             file_name = f"{self.fs_path}/{selected_chunk}-{ds._fingerprint}.parquet"
             print(f"Saving chunk {file_name} with {df.shape[0]} rows")
             try:
@@ -247,6 +260,9 @@ class ScraperBot:
             except Exception as e:
                 print(f"Upload failed {e}, retrying...")
                 time.sleep(5)
+
+            # Update the readme on success
+            self._update_readme(ds.info)
 
     def _rename_chunks(self):
         # Rename all chunks to be of one number higher
@@ -353,9 +369,12 @@ class ScraperBot:
         chunk_num = len(chunks)  # y in the naming scheme
         print(f"Found {len(chunks)} chunks: {chunks}")
 
-        print(f"Loading and converting to Hugging Face Dataset...")
+        if "image" in schema:
+            schema.remove("image")
+
+        print(f"Loading and converting to Hugging Face Dataset with columns {schema}...")
         ds = load_dataset(
-            self.hf_dataset_name, columns=schema, split="train", streaming=True
+            self.hf_dataset_name, columns=schema, split="train", streaming=True, verification_mode="no_checks"
         )
         df = pd.DataFrame(ds)
 
@@ -474,8 +493,6 @@ class ScraperBot:
         )
 
         # Load the current dataset without images initially, to figure out what we're working with
-        if "image" in schema:
-            schema.remove("image")
         current_dataset, chunk_count = self._load_dataset(schema=schema)
         after_message_id = (
             get_latest_message_id(current_dataset) if not fetch_all else None
