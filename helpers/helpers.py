@@ -24,17 +24,14 @@ def starts_with_quotes(string: str) -> bool:
     return string[0] in start_quotes
 
 
-def get_start_end_quotes(string: str) -> Tuple[str, str]:
+def get_start_end_quotes(string: str) -> Tuple[int, int]:
     first_quote_index = -1
     last_quote_index = -1
 
     for i, char in enumerate(string):
-        if first_quote_index != -1 and last_quote_index != -1:
-            break
-        if first_quote_index != -1 and char in start_quotes:
+        if first_quote_index == -1 and char in start_quotes:
             first_quote_index = i
-            continue
-        if last_quote_index != -1 and char in end_quotes:
-            first_quote_index = i
+        elif first_quote_index != -1 and char in end_quotes:
+            last_quote_index = i
 
     return (first_quote_index, last_quote_index)
