@@ -4,7 +4,6 @@ from typing import Tuple
 start_quotes = [
     '"',
     '“',
-    "'",
     '«',
     '„',
 ]
@@ -12,7 +11,6 @@ start_quotes = [
 end_quotes = [
     '"',
     '”',
-    "'",
     '»',
     '“',
 ]
