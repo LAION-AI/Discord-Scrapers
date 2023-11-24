@@ -21,7 +21,7 @@ from huggingface_hub import (
 
 import requests
 from PIL import Image as PILImage
-from datasets import Dataset, Image, load_dataset, disable_caching, info
+from datasets import Dataset, Image, load_dataset, disable_caching, info, Image, Value, Features, utils
 from dataclasses import fields
 
 disable_caching()
