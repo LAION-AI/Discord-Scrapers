@@ -264,7 +264,8 @@ class ScraperBot:
                 time.sleep(5)
 
             # Update the readme on success
-            self._update_readme(ds.info)
+            # FIXME: calculate new ds size from parquet files
+            # self._update_readme(ds.info)
 
     def _rename_chunks(self):
         # Rename all chunks to be of one number higher
@@ -378,15 +379,6 @@ class ScraperBot:
         ds = load_dataset(
             self.hf_dataset_name, columns=schema, split="train", streaming=True, verification_mode="no_checks"
         )
-
-        features = ds.features.copy()
-        
-        # Convert all features to string type
-        for feature in features:
-            features[feature] = Value(dtype='string')
-        
-        # Cast the dataset to the new features
-        ds = ds.cast(features)
         
         df = pd.DataFrame(ds)
 
