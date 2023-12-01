@@ -1,4 +1,3 @@
-import io
 import os
 import time
 import json
@@ -26,18 +25,33 @@ from dataclasses import fields
 
 disable_caching()
 
+
+def run_once(f):
+    def wrapper(*args, **kwargs):
+        if not wrapper.has_run:
+            wrapper.has_run = True
+            return f(*args, **kwargs)
+    wrapper.has_run = False
+    return wrapper
+
+
 # Load environment variables from .env file if they exist
 # Mainly used for local development, github actions will set these variables on its own.
-if os.path.exists(".env"):
-    with open(".env") as f:
-        for line in f:
-            if line.strip():
-                key, value = line.strip().split("=", 1)
-                if value:
-                    print(f"Setting {key} from .env file")
-                    os.environ[key] = value
-else:
-    print(".env file not found, skipping.")
+@run_once
+def load_env():
+    if os.path.exists(".env"):
+        with open(".env") as f:
+            for line in f:
+                if line.strip():
+                    key, value = line.strip().split("=", 1)
+                    if value:
+                        print(f"Setting {key} from .env file")
+                        os.environ[key] = value
+    else:
+        print(".env file not found, skipping.")
+
+
+load_env()
 
 
 @dataclass
@@ -48,7 +62,8 @@ class ScraperBotConfig:
     channel_id: str
     limit: int
     max_chunk_size: int
-    embed_images: bool
+    embed_data: bool
+    data_key: str
     hf_dataset_name: str
 
     @classmethod
@@ -58,13 +73,10 @@ class ScraperBotConfig:
             return cls(**config_dict)
 
 
+# Dummy class to use as a type hint
 @dataclass(frozen=True)
 class HFDatasetScheme:
-    caption: str
-    image: Image(decode=True)
-    link: str
-    message_id: str
-    timestamp: str
+    pass
 
 
 class AppendMode(Enum):
@@ -72,30 +84,14 @@ class AppendMode(Enum):
     NEW = "new"
 
 
-def prepare_dataset(messages: List[HFDatasetScheme]) -> pd.DataFrame:
-    return pd.DataFrame(
-        {
-            "caption": [msg.caption for msg in messages],
-            "image": [
-                None for msg in messages
-            ],  # Initialize to None, will be filled in later
-            "link": [
-                msg.link for msg in messages
-            ],  # will maintain just because we use it to filter
-            "message_id": [msg.message_id for msg in messages],
-            "timestamp": [msg.timestamp for msg in messages],
-        }
-    )
-
-
 def merge_datasets(old_df: pd.DataFrame, new_df: pd.DataFrame) -> pd.DataFrame:
     # Gather existing URLs from old_df using indices if it exists
-    existing_image_urls = old_df["link"].tolist() if old_df is not None else []
+    existing_data_urls = old_df["link"].tolist() if old_df is not None else []
 
-    print(f"Current rows: {len(existing_image_urls)}")
+    print(f"Current rows: {len(existing_data_urls)}")
 
     # Filter new_df to only include rows that aren't in old_df
-    filtered_new_df = new_df.loc[~new_df["link"].isin(existing_image_urls)]
+    filtered_new_df = new_df.loc[~new_df["link"].isin(existing_data_urls)]
 
     print(f"Rows to add: {filtered_new_df.shape[0]}")
 
@@ -126,16 +122,16 @@ def get_user_headers() -> Dict[str, str]:
     return {"authorization": os.environ["DISCORD_TOKEN"]}
 
 
-def get_image(link: str) -> bytes:
-    image = PILImage.open(requests.get(link, stream=True).raw).convert("RGB")
-    img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format="PNG")
-    return {"bytes": img_byte_arr.getvalue(), "path": None}
-
-
 class ScraperBot:
     def __init__(
-        self, config: ScraperBotConfig, condition_fn: Callable, parse_fn: Callable
+        self,
+        config: ScraperBotConfig,
+        HFDatasetScheme,
+        prepare_dataset: Callable,
+        condition_fn: Callable,
+        parse_fn: Callable,
+        download_fn: Callable,
+        readme_template: str = "dataset_readme_template.md",
     ) -> None:
         """A bot that scrapes messages from a Discord channel and uploads them to the Hugging Face Hub.
 
@@ -149,20 +145,25 @@ class ScraperBot:
             A function that receives a message with type Dict[str, Any] and returns a parsed
             message with type List[HFDatasetScheme].
         """
+        self.HFDatasetScheme = HFDatasetScheme
+        self.prepare_dataset = prepare_dataset
         self.config = config
         self.base_url = config.base_url
         self.channel_id = config.channel_id
         self.limit = config.limit
-        self.embed_images = config.embed_images
+        self.embed_data = config.embed_data
+        self.data_key = config.data_key
         self.hf_dataset_name = config.hf_dataset_name
         self.parse_fn = parse_fn
         self.condition_fn = condition_fn
+        self.download_fn = download_fn
+        self.readme_template = readme_template
 
     @property
     def schema(self):
-        schema = [f.name for f in fields(HFDatasetScheme)]
-        if not self.embed_images:
-            schema.remove("image")
+        schema = [f.name for f in fields(self.HFDatasetScheme)]
+        if not self.embed_data:
+            schema.remove(self.data_key)
         return schema
 
     @property
@@ -197,7 +198,7 @@ class ScraperBot:
 
     def _create_readme(self) -> None:
         upload_file(
-            path_or_fileobj=os.path.join(os.path.dirname(__file__), "dataset_readme_template.md"),
+            path_or_fileobj=os.path.join(os.path.dirname(__file__), self.readme_template),
             path_in_repo="README.md",
             repo_id=self.hf_dataset_name,
             token=os.environ["HF_TOKEN"],
@@ -221,8 +222,11 @@ class ScraperBot:
 
     def _get_chunk_names(self) -> None:
         fs = HfFileSystem(token=os.environ["HF_TOKEN"], skip_instance_cache=True)
-        chunks = fs.glob(f"{self.fs_path}/**.parquet")
-        return [chunk.replace(f"{self.fs_path}/", "") for chunk in chunks]
+        try:
+            chunks = fs.glob(f"{self.fs_path}/**.parquet")
+            return [chunk.replace(f"{self.fs_path}/", "") for chunk in chunks]
+        except FileNotFoundError:
+            return []
 
     def _get_detailed_chunk_names(self) -> None:
         fs = HfFileSystem(token=os.environ["HF_TOKEN"], skip_instance_cache=True)
@@ -252,9 +256,10 @@ class ScraperBot:
         # Prepare and upload the DataFrame
         needs_upload = True
         while needs_upload:
-            df = df.reset_index(drop=True) # drop index before converting to dataset
+            df = df.reset_index(drop=True)  # drop index before converting to dataset
             ds = Dataset.from_pandas(df)
-            ds = ds.cast_column("image", Image(decode=True))
+            if "image" in ds.column_names:
+                ds = ds.cast_column("image", Image(decode=True))
             file_name = f"{self.fs_path}/{selected_chunk}-{ds._fingerprint}.parquet"
             print(f"Saving chunk {file_name} with {df.shape[0]} rows")
             try:
@@ -374,8 +379,8 @@ class ScraperBot:
         chunk_num = len(chunks)  # y in the naming scheme
         print(f"Found {len(chunks)} chunks: {chunks}")
 
-        if "image" in schema:
-            schema.remove("image")
+        if self.data_key in schema:
+            schema.remove(self.data_key)
 
         print(f"Loading and converting to Hugging Face Dataset with columns {schema}...")
         ds = load_dataset(
@@ -489,17 +494,17 @@ class ScraperBot:
         return unique_list
 
     def scrape(self, fetch_all: bool = False) -> None:
-        schema = [f.name for f in fields(HFDatasetScheme)]
+        schema = [f.name for f in fields(self.HFDatasetScheme)]
 
-        # Drop images if we're not embedding them
-        if not self.embed_images:
-            schema.remove("image")
+        # Drop data if we're not embedding them
+        if not self.embed_data:
+            schema.remove(self.data_key)
 
         print(
             f"Beginning scrape for {self.hf_dataset_name} with schema {schema} and fetch_all={fetch_all}"
         )
 
-        # Load the current dataset without images initially, to figure out what we're working with
+        # Load the current dataset without data initially, to figure out what we're working with
         current_dataset, chunk_count = self._load_dataset(schema=schema)
         after_message_id = (
             get_latest_message_id(current_dataset) if not fetch_all else None
@@ -522,7 +527,7 @@ class ScraperBot:
             print("No new messages found.")
             return
 
-        new_message_dataset = prepare_dataset(filtered_messages)
+        new_message_dataset = self.prepare_dataset(filtered_messages)
 
         print(
             f"New data has {len(new_message_dataset['link'])} rows and {len(new_message_dataset['link']) // self.config.max_chunk_size + 1} chunks."
@@ -551,15 +556,15 @@ class ScraperBot:
             unit=" rows",
             total=total_rows,
         ):
-            # Add the image and append the row to the row_buffer
+            # Add the data and append the row to the row_buffer
             try:
-                if self.embed_images:
-                    row["image"] = get_image(row["link"])
+                if self.embed_data:
+                    row[self.data_key] = self.download_fn(row["link"])
                 current_chunk = pd.concat(
                     [current_chunk, pd.DataFrame([row])], ignore_index=True
                 )
             except Exception as e:
-                print(f"Error downloading image at {row['link']}: {e}")
+                print(f"Error downloading data at {row['link']}: {e}")
 
             if current_chunk.shape[0] >= self.config.max_chunk_size:
                 # If the current chunk is full, create a new one
