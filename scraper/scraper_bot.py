@@ -203,7 +203,7 @@ class ScraperBot:
             token=os.environ["HF_TOKEN"],
             repo_type="dataset",
         )
-    
+
     def _update_readme(self, dataset_info) -> None:
         dataset_card = DatasetCard.load(self.hf_dataset_name)
         dataset_card_data = dataset_card.data
@@ -318,7 +318,7 @@ class ScraperBot:
         for chunk in chunks:
             name = chunk.get("name").replace(f"{self.fs_path}/", "")
             key = int(name.split("-")[1])
-            
+
             split_name = name.split(".")[0].split("-")
             if len(split_name) == 5:
                 fingerprint = split_name[-1]
@@ -326,7 +326,7 @@ class ScraperBot:
                 fingerprint = None
 
             from_name = f"{self.repo_path}/{name}"
-            
+
             if fingerprint:
                 to_name = f"{self.repo_path}/train-{key:05d}-of-{new_chunk_count:05d}-{fingerprint}.parquet"
             else:
@@ -344,7 +344,7 @@ class ScraperBot:
                 raise ValueError(
                     f"Duplicate fingerprint {fingerprint} found, something is wrong"
                 )
-            
+
             if fingerprint:
                 fingerprints.append(fingerprint)
 
@@ -379,7 +379,7 @@ class ScraperBot:
         ds = load_dataset(
             self.hf_dataset_name, columns=schema, split="train", streaming=True, verification_mode="no_checks"
         )
-        
+
         df = pd.DataFrame(ds)
 
         return (df, chunk_num)
@@ -480,8 +480,9 @@ class ScraperBot:
         print(
             f"Found {len(unique_list)} valid samples out of {total_messages} messages."
         )
-        print(f"Oldest: {unique_list[0].timestamp}")
-        print(f"Newest: {unique_list[-1].timestamp}")
+        if unique_list:
+            print(f"Oldest: {unique_list[0].timestamp}")
+            print(f"Newest: {unique_list[-1].timestamp}")
 
         return unique_list
 
@@ -500,7 +501,7 @@ class ScraperBot:
         current_dataset, chunk_count = self._load_dataset(schema=schema)
         after_message_id = (
             get_latest_message_id(current_dataset) if not fetch_all else None
-        ) 
+        )
 
         print(
             f"Current dataset has {current_dataset.shape[0] if current_dataset is not None else 0} rows and {chunk_count} chunks."
