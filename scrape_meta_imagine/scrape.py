@@ -1,11 +1,12 @@
 import os
-import re
 from typing import Any, Dict, List
+
+import sys
+sys.path.append("..")
 
 from scraper import ScraperBot, ScraperBotConfig, HFDatasetScheme
 from helpers import starts_with_quotes, get_start_end_quotes
 
-url_pattern = re.compile(r'https?://\S+')
 
 def parse_fn(message: Dict[str, Any]) -> List[HFDatasetScheme]:
     """Parses a message into a list of Hugging Face Dataset Schemes.
@@ -26,7 +27,7 @@ def parse_fn(message: Dict[str, Any]) -> List[HFDatasetScheme]:
 
     # Extract the text between the first and last quotes to get the complete prompt
     prompt = content[first_quote_index + 1:last_quote_index].strip()
-    image_urls = url_pattern.findall(content)
+    image_urls = [attachment["url"] for attachment in message["attachments"]]
     timestamp = message["timestamp"]
     message_id = message["id"]
 
@@ -47,7 +48,7 @@ def condition_fn(message: Dict[str, Any]) -> bool:
     bool
         True if the message meets the condition, False otherwise.
     """
-    return url_pattern.search(message["content"]) and starts_with_quotes(message["content"])
+    return len(message["attachments"]) > 0 and starts_with_quotes(message["content"])
 
 
 if __name__ == "__main__":
