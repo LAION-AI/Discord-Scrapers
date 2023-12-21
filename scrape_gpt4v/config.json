@@ -3,6 +3,7 @@
     "channel_id": "1159217496390389801",
     "limit": 100,
     "max_chunk_size": 300,
-    "embed_images": false,
+    "embed_data": false,
+    "data_key": "image",
     "hf_dataset_name": "laion/gpt4v-dataset"
 }

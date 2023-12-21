@@ -1,26 +1,25 @@
 import io
 import os
+import re
 import pandas as pd
 from typing import Any, Dict, List
 import requests
 from PIL import Image as PILImage
-from dataclasses import dataclass
-from datasets import Image
-
-import sys
-sys.path.append("..")
-
 from scraper import ScraperBot, ScraperBotConfig
-from helpers import starts_with_quotes, get_start_end_quotes
+from helpers import has_code_block, get_code_block
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class HFDatasetScheme:
-    caption: str
-    image: Image(decode=True)
+    user_prompt: str
+    system_prompt: str
+    lyrics: str
+    audio: bytes
     link: str
     message_id: str
     timestamp: str
+
 
 def parse_fn(message: Dict[str, Any]) -> List[HFDatasetScheme]:
     """Parses a message into a list of Hugging Face Dataset Schemes.
@@ -37,16 +36,36 @@ def parse_fn(message: Dict[str, Any]) -> List[HFDatasetScheme]:
     """
     content = message["content"]
 
-    (first_quote_index, last_quote_index) = get_start_end_quotes(content)
+    prompt = get_code_block(content).strip()
+
+    """
+    The code block looks like this:
+    USER_PROMPT:A 90s alt rock song about being lazy and crazy
+    SYSTEM_PROMPT:alternative rock grungy energetic
+    LYRICS:[Verse] (many lines of lyrics)
+    """
+
+    user_prompt = prompt.split("\n")[0].split(":")[1].strip()
+    system_prompt = prompt.split("\n")[1].split(":")[1].strip()
+    lyrics = "\n".join(prompt.split("\n")[2:]).strip()
 
     # Extract the text between the first and last quotes to get the complete prompt
-    prompt = content[first_quote_index + 1:last_quote_index].strip()
-    image_urls = [attachment["url"] for attachment in message["attachments"]]
+    audio_urls = [attachment["url"] for attachment in message["attachments"]]
     timestamp = message["timestamp"]
     message_id = message["id"]
 
-    return [HFDatasetScheme(caption=prompt, image=None, link=image_url, message_id=message_id, timestamp=timestamp)
-            for image_url in image_urls]
+    return [
+        HFDatasetScheme(
+            user_prompt=user_prompt,
+            system_prompt=system_prompt,
+            lyrics=lyrics,
+            audio=None,
+            link=audio_url,
+            message_id=message_id,
+            timestamp=timestamp,
+        )
+        for audio_url in audio_urls
+    ]
 
 
 def condition_fn(message: Dict[str, Any]) -> bool:
@@ -62,14 +81,16 @@ def condition_fn(message: Dict[str, Any]) -> bool:
     bool
         True if the message meets the condition, False otherwise.
     """
-    return len(message["attachments"]) > 0 and starts_with_quotes(message["content"])
+    return has_code_block(message["content"]) and len(message["attachments"]) > 0
 
 
 def prepare_dataset(messages: List[HFDatasetScheme]) -> pd.DataFrame:
     return pd.DataFrame(
         {
-            "caption": [msg.caption for msg in messages],
-            "image": [
+            "user_prompt": [msg.user_prompt for msg in messages],
+            "system_prompt": [msg.system_prompt for msg in messages],
+            "lyrics": [msg.lyrics for msg in messages],
+            "audio": [
                 None for msg in messages
             ],  # Initialize to None, will be filled in later
             "link": [
@@ -81,16 +102,22 @@ def prepare_dataset(messages: List[HFDatasetScheme]) -> pd.DataFrame:
     )
 
 
-def get_image(link: str) -> bytes:
-    image = PILImage.open(requests.get(link, stream=True).raw).convert("RGB")
-    img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format="PNG")
-    return {"bytes": img_byte_arr.getvalue(), "path": None}
+def download_fn(link: str) -> bytes:
+    response = requests.get(link)
+    return response.content
 
 
 if __name__ == "__main__":
     config_path = os.path.join(os.path.dirname(__file__), "config.json")
     config = ScraperBotConfig.from_json(config_path)
 
-    bot = ScraperBot(config=config, HFDatasetScheme=HFDatasetScheme, prepare_dataset=prepare_dataset, parse_fn=parse_fn, condition_fn=condition_fn, download_fn=get_image)
+    bot = ScraperBot(
+        config=config,
+        HFDatasetScheme=HFDatasetScheme,
+        prepare_dataset=prepare_dataset,
+        parse_fn=parse_fn,
+        condition_fn=condition_fn,
+        download_fn=download_fn,
+        readme_template="dataset_readme_template_chirp.md",
+    )
     bot.scrape(fetch_all=os.environ.get("FETCH_ALL", "false").lower() == "true")

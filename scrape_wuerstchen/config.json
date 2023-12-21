@@ -3,6 +3,7 @@
     "channel_id": "1161398740595265626",
     "limit": 100,
     "max_chunk_size": 300,
-    "embed_images": true,
+    "embed_data": true,
+    "data_key": "image",
     "hf_dataset_name": "laion/wuerstchen-dataset"
 }
