@@ -243,7 +243,9 @@ class ScraperBot:
             print(f"Creating new chunk: {selected_chunk}")
         else:
             most_recent_chunk = max(chunks, key=lambda x: int(x.split("-")[1]))
-            key, total = [int(x) for x in most_recent_chunk.split("-")[1:4:2]]
+            key = int(most_recent_chunk.split("-")[1])
+            total_parts = most_recent_chunk.split("-")[3]
+            total = int(total_parts.split(".")[0]) if "." in total_parts else int(total_parts)
             selected_chunk = f"train-{key:05d}-of-{total:05d}"
             print(f"Updating existing chunk: {selected_chunk}")
 
