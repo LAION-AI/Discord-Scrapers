@@ -20,7 +20,18 @@ from huggingface_hub import (
 
 import requests
 from PIL import Image as PILImage
-from datasets import Dataset, Image, load_dataset, disable_caching, info, Image, Value, Features, utils
+from datasets import (
+    Dataset,
+    Image,
+    load_dataset,
+    disable_caching,
+    info,
+    Image,
+    Audio,
+    Value,
+    Features,
+    utils,
+)
 from dataclasses import fields
 
 disable_caching()
@@ -31,6 +42,7 @@ def run_once(f):
         if not wrapper.has_run:
             wrapper.has_run = True
             return f(*args, **kwargs)
+
     wrapper.has_run = False
     return wrapper
 
@@ -198,7 +210,9 @@ class ScraperBot:
 
     def _create_readme(self) -> None:
         upload_file(
-            path_or_fileobj=os.path.join(os.path.dirname(__file__), self.readme_template),
+            path_or_fileobj=os.path.join(
+                os.path.dirname(__file__), self.readme_template
+            ),
             path_in_repo="README.md",
             repo_id=self.hf_dataset_name,
             token=os.environ["HF_TOKEN"],
@@ -208,7 +222,9 @@ class ScraperBot:
     def _update_readme(self, dataset_info) -> None:
         dataset_card = DatasetCard.load(self.hf_dataset_name)
         dataset_card_data = dataset_card.data
-        info.DatasetInfosDict({'default': dataset_info}).to_dataset_card_data(dataset_card_data)
+        info.DatasetInfosDict({"default": dataset_info}).to_dataset_card_data(
+            dataset_card_data
+        )
         dataset_card.data = dataset_card_data
 
         upload_file(
@@ -249,7 +265,11 @@ class ScraperBot:
             most_recent_chunk = max(chunks, key=lambda x: int(x.split("-")[1]))
             key = int(most_recent_chunk.split("-")[1])
             total_parts = most_recent_chunk.split("-")[3]
-            total = int(total_parts.split(".")[0]) if "." in total_parts else int(total_parts)
+            total = (
+                int(total_parts.split(".")[0])
+                if "." in total_parts
+                else int(total_parts)
+            )
             selected_chunk = f"train-{key:05d}-of-{total:05d}"
             print(f"Updating existing chunk: {selected_chunk}")
 
@@ -258,8 +278,12 @@ class ScraperBot:
         while needs_upload:
             df = df.reset_index(drop=True)  # drop index before converting to dataset
             ds = Dataset.from_pandas(df)
+
             if "image" in ds.column_names:
                 ds = ds.cast_column("image", Image(decode=True))
+            if "audio" in ds.column_names:
+                ds = ds.cast_column("audio", Audio(decode=True, mono=False))
+
             file_name = f"{self.fs_path}/{selected_chunk}-{ds._fingerprint}.parquet"
             print(f"Saving chunk {file_name} with {df.shape[0]} rows")
             try:
@@ -304,7 +328,9 @@ class ScraperBot:
             ]
 
             if len(duplicate_chunks) > 1:
-                print(f"Found {len(duplicate_chunks)} duplicate chunks with base name {base_name}")
+                print(
+                    f"Found {len(duplicate_chunks)} duplicate chunks with base name {base_name}"
+                )
                 smallest_chunk = min(duplicate_chunks, key=lambda x: x.get("size"))
                 print(
                     f"Deleting smaller chunk {smallest_chunk.get('name').replace(f'{self.fs_path}/', '')}"
@@ -337,7 +363,9 @@ class ScraperBot:
             if fingerprint:
                 to_name = f"{self.repo_path}/train-{key:05d}-of-{new_chunk_count:05d}-{fingerprint}.parquet"
             else:
-                to_name = f"{self.repo_path}/train-{key:05d}-of-{new_chunk_count:05d}.parquet"
+                to_name = (
+                    f"{self.repo_path}/train-{key:05d}-of-{new_chunk_count:05d}.parquet"
+                )
 
             if from_name == to_name:
                 print(
@@ -382,9 +410,15 @@ class ScraperBot:
         if self.data_key in schema:
             schema.remove(self.data_key)
 
-        print(f"Loading and converting to Hugging Face Dataset with columns {schema}...")
+        print(
+            f"Loading and converting to Hugging Face Dataset with columns {schema}..."
+        )
         ds = load_dataset(
-            self.hf_dataset_name, columns=schema, split="train", streaming=True, verification_mode="no_checks"
+            self.hf_dataset_name,
+            columns=schema,
+            split="train",
+            streaming=True,
+            verification_mode="no_checks",
         )
 
         df = pd.DataFrame(ds)
@@ -532,7 +566,9 @@ class ScraperBot:
         print(
             f"New data has {len(new_message_dataset['link'])} rows and {len(new_message_dataset['link']) // self.config.max_chunk_size + 1} chunks."
         )
-        print(f"New + Current dataset will have {len(new_message_dataset) + len(current_dataset) if current_dataset is not None else len(new_message_dataset)} rows.")
+        print(
+            f"New + Current dataset will have {len(new_message_dataset) + len(current_dataset) if current_dataset is not None else len(new_message_dataset)} rows."
+        )
         print(f"Schema: {self.schema}")
 
         total_rows = len(new_message_dataset)
