@@ -5,5 +5,5 @@
     "max_chunk_size": 300,
     "embed_data": true,
     "data_key": "audio",
-    "hf_dataset_name": "TwoAbove/chirp-v2-dataset-test"
+    "hf_dataset_name": "laion/chirp-v2-dataset"
 }
