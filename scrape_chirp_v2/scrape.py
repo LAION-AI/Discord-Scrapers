@@ -8,6 +8,7 @@ from PIL import Image as PILImage
 from scraper import ScraperBot, ScraperBotConfig
 from helpers import has_code_block, get_code_block
 from dataclasses import dataclass
+from datasets import Audio
 
 
 @dataclass(frozen=True)
@@ -15,7 +16,7 @@ class HFDatasetScheme:
     user_prompt: str
     system_prompt: str
     lyrics: str
-    audio: bytes
+    audio: Audio(decode=True)
     link: str
     message_id: str
     timestamp: str

@@ -8,7 +8,7 @@ dataset_info:
     - name: lyrics
       dtype: string
     - name: audio
-      dtype: binary
+      dtype: audio
     - name: link
       dtype: string
     - name: message_id
