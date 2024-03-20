@@ -3,6 +3,7 @@
     "channel_id": "1182414912857837680",
     "limit": 100,
     "max_chunk_size": 300,
-    "embed_images": true,
+    "embed_data": true,
+    "data_key": "audio",
     "hf_dataset_name": "laion/meta-imagine-dataset"
 }
