@@ -4,6 +4,6 @@
     "limit": 100,
     "max_chunk_size": 300,
     "embed_data": true,
-    "data_key": "audio",
+    "data_key": "image",
     "hf_dataset_name": "laion/meta-imagine-dataset"
 }
