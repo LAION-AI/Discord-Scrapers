@@ -1,4 +1,4 @@
-name: Run scrape_meta_imagine/scrape.py every hour
+name: Run scrape_chirp_v2/scrape.py every hour
 
 on:
   schedule:
