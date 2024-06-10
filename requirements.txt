@@ -4,4 +4,3 @@ Pillow==10.0.1
 huggingface_hub>=0.18
 numpy
 fsspec==2023.9.2
-hashlib
