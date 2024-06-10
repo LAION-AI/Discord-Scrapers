@@ -6,32 +6,34 @@ import pandas as pd
 import numpy as np
 from enum import Enum
 from tqdm import tqdm
+from pathlib import Path
 from dataclasses import dataclass
-from typing import Callable, List, Dict, Any
+from typing import Callable, Optional, List, Dict, Any
 from huggingface_hub import (
     HfFileSystem,
     upload_file,
+    hf_hub_download,
     create_commit,
     create_repo,
     CommitOperationCopy,
     CommitOperationDelete,
     DatasetCard,
 )
-
-import requests
-from PIL import Image as PILImage
 from datasets import (
     Dataset,
     Image,
     load_dataset,
     disable_caching,
     info,
+    splits,
     Image,
     Audio,
     Value,
     Features,
     utils,
 )
+import requests
+from PIL import Image as PILImage
 from dataclasses import fields
 
 disable_caching()
@@ -143,6 +145,7 @@ class ScraperBot:
         condition_fn: Callable,
         parse_fn: Callable,
         download_fn: Callable,
+        hash_fn: Optional[Callable] = None,
         readme_template: str = "dataset_readme_template.md",
     ) -> None:
         """A bot that scrapes messages from a Discord channel and uploads them to the Hugging Face Hub.
@@ -169,6 +172,7 @@ class ScraperBot:
         self.parse_fn = parse_fn
         self.condition_fn = condition_fn
         self.download_fn = download_fn
+        self.hash_fn = hash_fn
         self.readme_template = readme_template
 
     @property
@@ -219,12 +223,34 @@ class ScraperBot:
             repo_type="dataset",
         )
 
-    def _update_readme(self, dataset_info) -> None:
+    def _update_readme(self, ds) -> None:
+        dataset_card_path = hf_hub_download(
+            self.hf_dataset_name, "README.md", repo_type="dataset"
+        )
+        dataset_card = DatasetCard.load(Path(dataset_card_path))
         dataset_card = DatasetCard.load(self.hf_dataset_name)
         dataset_card_data = dataset_card.data
-        info.DatasetInfosDict({"default": dataset_info}).to_dataset_card_data(
+        info.DatasetInfosDict({"default": ds.info}).to_dataset_card_data(
             dataset_card_data
         )
+
+        info_to_dump: info.DatasetInfo = ds.info.copy()
+        info_to_dump.config_name = "default"
+        info_to_dump.splits = splits.SplitDict()
+
+        total_dataset_nbytes = ds._estimate_nbytes()
+        info_to_dump.splits.add(splits.SplitInfo(
+            str('train'), num_bytes=total_dataset_nbytes, num_examples=len(ds)
+        ))
+        info_to_dump.download_checksums = None
+        info_to_dump.download_size = total_dataset_nbytes
+        info_to_dump.dataset_size = total_dataset_nbytes
+        info_to_dump.size_in_bytes = total_dataset_nbytes
+
+        info.DatasetInfosDict({"default": info_to_dump}).to_dataset_card_data(
+            dataset_card_data
+        )
+
         dataset_card.data = dataset_card_data
 
         upload_file(
@@ -296,6 +322,7 @@ class ScraperBot:
 
             # Update the readme on success
             # FIXME: calculate new ds size from parquet files
+            # Currently this only find the size of this single chunk
             # self._update_readme(ds.info)
 
     def _rename_chunks(self):
@@ -548,7 +575,10 @@ class ScraperBot:
             f"Current dataset has {current_dataset.shape[0] if current_dataset is not None else 0} rows and {chunk_count} chunks."
         )
         print(f"Last message ID: {after_message_id}.")
-        fetch_all = True
+
+        # set to true to update all messages from history
+        # note that this will add back any previously manually removed entries
+        # fetch_all = True 
         messages = self._get_messages(
             after_message_id=after_message_id if not fetch_all else None
         )
@@ -596,11 +626,16 @@ class ScraperBot:
             try:
                 if self.embed_data:
                     row[self.data_key] = self.download_fn(row["link"])
+                    if "image_hash" in row and "bytes" in row[self.data_key]:
+                        if self.hash_fn:
+                            row["image_hash"] = self.hash_fn(row[self.data_key]['bytes'])
+                            print(f"Image hash: {row['image_hash']}")
                 current_chunk = pd.concat(
                     [current_chunk, pd.DataFrame([row])], ignore_index=True
                 )
             except Exception as e:
                 print(f"Error downloading data at {row['link']}: {e}")
+                continue
 
             if current_chunk.shape[0] >= self.config.max_chunk_size:
                 # If the current chunk is full, create a new one
