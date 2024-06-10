@@ -6,6 +6,7 @@ import requests
 from PIL import Image as PILImage
 from dataclasses import dataclass
 from datasets import Image
+import hashlib
 
 import sys
 sys.path.append("..")
@@ -21,6 +22,8 @@ class HFDatasetScheme:
     link: str
     message_id: str
     timestamp: str
+    image_hash: str
+    synthetic_caption: str
 
 
 def parse_fn(message: Dict[str, Any]) -> List[HFDatasetScheme]:
@@ -46,7 +49,13 @@ def parse_fn(message: Dict[str, Any]) -> List[HFDatasetScheme]:
     timestamp = message["timestamp"]
     message_id = message["id"]
 
-    return [HFDatasetScheme(caption=prompt, image=None, link=image_url, message_id=message_id, timestamp=timestamp)
+    return [HFDatasetScheme(caption=prompt, 
+                            image=None, 
+                            link=image_url, 
+                            message_id=message_id, 
+                            timestamp=timestamp,
+                            image_hash="",
+                            synthetic_caption="")
             for image_url in image_urls]
 
 
@@ -78,6 +87,8 @@ def prepare_dataset(messages: List[HFDatasetScheme]) -> pd.DataFrame:
             ],  # will maintain just because we use it to filter
             "message_id": [msg.message_id for msg in messages],
             "timestamp": [msg.timestamp for msg in messages],
+            "image_hash": ["" for msg in messages], # Initialize to empty string, will be filled in later
+            "synthetic_caption": ["" for msg in messages], # Initialize to empty string, will be filled in later
         }
     )
 
@@ -88,10 +99,19 @@ def get_image(link: str) -> bytes:
     image.save(img_byte_arr, format="PNG")
     return {"bytes": img_byte_arr.getvalue(), "path": None}
 
+def get_image_hash(image_bytes: bytes) -> str:
+    """Calculate MD5 hash from image bytes."""
+    return hashlib.md5(image_bytes).hexdigest()
 
 if __name__ == "__main__":
     config_path = os.path.join(os.path.dirname(__file__), "config.json")
     config = ScraperBotConfig.from_json(config_path)
 
-    bot = ScraperBot(config=config, HFDatasetScheme=HFDatasetScheme, prepare_dataset=prepare_dataset, parse_fn=parse_fn, condition_fn=condition_fn, download_fn=get_image)
+    bot = ScraperBot(config=config,
+                     HFDatasetScheme=HFDatasetScheme, 
+                     prepare_dataset=prepare_dataset, 
+                     parse_fn=parse_fn, 
+                     condition_fn=condition_fn, 
+                     download_fn=get_image, 
+                     hash_fn=get_image_hash)
     bot.scrape(fetch_all=os.environ.get("FETCH_ALL", "false").lower() == "true")
